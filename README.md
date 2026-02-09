@@ -41,10 +41,38 @@ docker-compose up -d
 | `DB_PASSWORD` | 数据库密码 | `mypassword123` |
 | `CORS_ORIGIN` | 允许跨域的来源 | `https://cloud.yourdomain.com` |
 | `DOMAIN` | 应用域名 | `yourdomain.com` |
-| `ACCESS_PASSWORD_HASH` | (可选) 访问密码的 Hash | `argon2_hash_here...` |
+| `ACCESS_PASSWORD_HASH` | (可选) 访问密码的 Hash | `sha256_hash_here...` |
 | `TELEGRAM_BOT_TOKEN` | (可选) Telegram Bot Token | `123456:ABC-DEF...` |
 | `TELEGRAM_API_ID` | (可选) Telegram API ID | `123456` |
 | `TELEGRAM_API_HASH` | (可选) Telegram API Hash | `abcdef123456...` |
+
+---
+
+## 🔐 安全与访问控制
+
+如果设置了 `ACCESS_PASSWORD_HASH`，访问网页和 API 将需要输入密码。本应用目前使用 **SHA-256** 算法进行哈希。
+
+### 如何生成密码哈希值？
+
+你可以使用以下任一简单命令生成（将 `your_password` 替换为你想设的密码）：
+
+#### Node.js (推荐，跨平台)
+如果你已经安装了 Node.js，直接运行：
+```bash
+node -e "console.log(require('crypto').createHash('sha256').update('your_password').digest('hex'))"
+```
+
+#### Linux/macOS (Git Bash)
+```bash
+echo -n "your_password" | sha256sum | awk '{print $1}'
+```
+
+#### PowerShell (Windows)
+```powershell
+[System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes("your_password"))).Replace("-", "").ToLower()
+```
+
+将生成的 64 位字符串填入 `.env` 文件的 `ACCESS_PASSWORD_HASH` 即可。
 
 ---
 
