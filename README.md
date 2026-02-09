@@ -3,20 +3,17 @@
 本地全栈云存储应用
 
 ## 技术栈
-
 - **前端**: React + TypeScript + Vite + Tailwind CSS
 - **后端**: Node.js + Express + TypeScript
 - **数据库**: PostgreSQL
-- **容器化**: Docker + Docker Compose
+- **容器化**: Docker
 
-## 快速开始
+## 快速开始（生产部署）
 
-### 开发模式（本地运行）
-
-#### 1. 启动数据库
+### 使用 Docker 镜像（推荐）
 
 ```bash
-# 使用 Docker 启动 PostgreSQL
+# 1. 启动 PostgreSQL
 docker run -d \
   --name foomclous-postgres \
   -e POSTGRES_DB=foomclous \
@@ -25,47 +22,70 @@ docker run -d \
   -p 5432:5432 \
   postgres:16-alpine
 
-# 初始化数据库表
-docker exec -i foomclous-postgres psql -U foomclous -d foomclous < init.sql
+# 2. 启动后端（数据库表会自动初始化）
+docker run -d \
+  --name foomclous-backend \
+  -e DATABASE_URL=postgresql://foomclous:foomclous123@postgres:5432/foomclous \
+  -e PORT=51947 \
+  -e UPLOAD_DIR=/data/uploads \
+  -e THUMBNAIL_DIR=/data/thumbnails \
+  -e CHUNK_DIR=/data/chunks \
+  -e CORS_ORIGIN=https://co.zrn.qzz.io \
+  -e DOMAIN=co.zrn.qzz.io \
+  -p 51947:51947 \
+  -v foomclous-data:/data \
+  --link foomclous-postgres:postgres \
+  cxaryoro/foomclous-backend:latest
+
+# 3. 启动前端
+docker run -d \
+  --name foomclous-frontend \
+  -e VITE_API_URL=https://co.zrn.qzz.io \
+  -p 47832:80 \
+  cxaryoro/foomclous-frontend:latest
 ```
 
-#### 2. 启动后端
+**后端启动时会自动读取 schema.sql 并创建数据库表，无需手动操作。**
+
+### 使用 Docker Compose
+
+需要先将 `docker-compose.prod.yml` 上传到服务器，然后：
 
 ```bash
-cd backend
-npm install
-npm run dev
+docker-compose -f docker-compose.prod.yml up -d
 ```
 
-后端将在 http://localhost:51947 启动
+## 开发模式（本地）
 
-#### 3. 启动前端
-
+### 1. 安装依赖
 ```bash
-cd frontend
-npm install
-npm run dev
+# 后端
+cd backend && npm install
+
+# 前端
+cd frontend && npm install
 ```
 
-前端将在 http://localhost:5173 启动
-
-### 生产模式（Docker Compose）
-
+### 2. 启动服务
 ```bash
-# 构建并启动所有服务
-docker-compose up -d --build
+# 后端
+cd backend && npm run dev
 
-# 查看日志
-docker-compose logs -f
-
-# 停止所有服务
-docker-compose down
+# 前端
+cd frontend && npm run dev
 ```
 
-服务端口：
-- 前端: http://localhost:47832
+### 3. 访问应用
+- 前端: http://localhost:5173
 - 后端 API: http://localhost:51947
-- PostgreSQL: localhost:5432
+
+## 服务端口
+
+| 服务 | 端口 | 说明 |
+|------|------|------|
+| 前端 | 47832 | HTTP |
+| 后端 API | 51947 | API |
+| PostgreSQL | 5432 | 数据库 |
 
 ## 项目结构
 
@@ -73,20 +93,17 @@ docker-compose down
 FoomClous/
 ├── frontend/                 # 前端代码
 │   ├── src/
-│   │   ├── components/      # UI 组件
-│   │   ├── services/        # API 服务
-│   │   ├── hooks/           # React Hooks
-│   │   └── ...
 │   ├── Dockerfile
-│   └── nginx.conf
+│   ├── nginx.conf
 ├── backend/                  # 后端代码
 │   ├── src/
 │   │   ├── routes/          # API 路由
 │   │   ├── middleware/      # 中间件
 │   │   ├── db/              # 数据库
 │   │   └── index.ts         # 入口文件
-│   └── Dockerfile
-├── docker-compose.yml
+│   ├── Dockerfile
+├── docker-compose.yml          # 开发环境
+├── docker-compose.prod.yml      # 生产环境
 └── README.md
 ```
 
@@ -100,8 +117,8 @@ FoomClous/
 | GET | `/api/files/:id` | 获取单个文件信息 |
 | GET | `/api/files/:id/preview` | 预览文件 |
 | GET | `/api/files/:id/download` | 下载文件 |
-| GET | `/api/files/:id/thumbnail` | 获取缩略图 |
 | DELETE | `/api/files/:id` | 删除文件 |
+| GET | `/api/files/:id/thumbnail` | 获取缩略图 |
 
 ### 上传
 
@@ -122,7 +139,7 @@ FoomClous/
 
 外部 API 用于集成第三方应用（如 Telegram Bot）。
 
-请求头：
+请求头示例：
 ```
 X-API-Key: fc_xxxxxx
 ```
@@ -137,7 +154,7 @@ curl -X POST http://localhost:51947/api/v1/upload/external \
 ## 环境变量
 
 | 变量 | 描述 | 默认值 |
-|------|------|--------|
+|--------|------|--------|
 | `DATABASE_URL` | PostgreSQL 连接字符串 | `postgresql://foomclous:password@localhost:5432/foomclous` |
 | `PORT` | 后端端口 | `51947` |
 | `UPLOAD_DIR` | 上传文件目录 | `./data/uploads` |
