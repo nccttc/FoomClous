@@ -1,178 +1,96 @@
-# FoomClous
+# ☁️ FoomClous
 
-本地全栈云存储应用
+**FoomClous** 是一款高性能、极简主义的个人私有云存储解决方案。支持大文件切片上传、实时图片预览、视频流播放，并提供强大的 API 支持（如 Telegram Bot 集成）。
 
-## 技术栈
-- **前端**: React + TypeScript + Vite + Tailwind CSS
-- **后端**: Node.js + Express + TypeScript
-- **数据库**: PostgreSQL
-- **容器化**: Docker
+---
 
-## 快速开始（生产部署）
+## 🚀 快速部署 (Docker Compose)
 
-### 使用 Docker 镜像（推荐）
+这是最简单、最推荐的方式。只需两步即可在服务器上启动完整服务。
+
+### 1. 下载配置文件
+在服务器上创建一个目录并进入，下载部署所需的 `docker-compose.yml`：
 
 ```bash
-# 1. 启动 PostgreSQL
-docker run -d \
-  --name foomclous-postgres \
-  -e POSTGRES_DB=foomclous \
-  -e POSTGRES_USER=foomclous \
-  -e POSTGRES_PASSWORD=foomclous123 \
-  -p 5432:5432 \
-  postgres:16-alpine
+mkdir foomclous && cd foomclous
+wget https://raw.githubusercontent.com/cxari/FoomClous/main/docker-compose.prod.yml -O docker-compose.yml
+```
 
-# 2. 启动后端（数据库表会自动初始化）
-docker run -d \
-  --name foomclous-backend \
-  -e DATABASE_URL=postgresql://foomclous:foomclous123@postgres:5432/foomclous \
-  -e PORT=51947 \
-  -e UPLOAD_DIR=/data/uploads \
-  -e THUMBNAIL_DIR=/data/thumbnails \
-  -e CHUNK_DIR=/data/chunks \
-  -e CORS_ORIGIN=https://co.zrn.qzz.io \
-  -e DOMAIN=co.zrn.qzz.io \
+### 2. 配置并运行
+创建一个 `.env` 文件（或直接编辑 `docker-compose.yml` 中的环境变量），填入你的配置：
+
+```bash
+# 修改 VITE_API_URL 为你的实际访问地址
+# 修改 DB_PASSWORD 为你的数据库密码
+
+docker-compose up -d
+```
+
+---
+
+## 🛠️ 环境变量配置
+
+在启动前，请确保设置好以下核心变量（建议放入 `.env` 文件）：
+
+| 变量名 | 说明 | 示例 |
+| :--- | :--- | :--- |
+| `VITE_API_URL` | 前端访问后端的地址 (域名或 IP:端口) | `https://api.yourdomain.com` |
+| `DB_PASSWORD` | 数据库密码 | `mypassword123` |
+| `CORS_ORIGIN` | 允许跨域的来源 | `https://cloud.yourdomain.com` |
+| `DOMAIN` | 应用域名 | `yourdomain.com` |
+| `ACCESS_PASSWORD_HASH` | (可选) 访问密码的 Hash | `argon2_hash_here...` |
+| `TELEGRAM_BOT_TOKEN` | (可选) Telegram Bot Token | `123456:ABC-DEF...` |
+| `TELEGRAM_API_ID` | (可选) Telegram API ID | `123456` |
+| `TELEGRAM_API_HASH` | (可选) Telegram API Hash | `abcdef123456...` |
+
+---
+
+## 📦 Docker 镜像说明
+
+如果你希望手动运行镜像，可以使用以下 Docker Hub 官方镜像：
+
+*   **后端 API:** `cxaryoro/foomclous-backend:latest`
+*   **前端 UI:** `cxaryoro/foomclous-frontend:latest`
+*   **数据库:** `postgres:16-alpine`
+
+### 手动单条命令启动示例 (快速测试)
+
+```bash
+# 1. 启动数据库
+docker run -d --name fc-db -e POSTGRES_PASSWORD=pass postgres:16-alpine
+
+# 2. 启动后端
+docker run -d --name fc-api \
+  -e DATABASE_URL=postgresql://foomclous:pass@fc-db:5432/foomclous \
   -p 51947:51947 \
-  -v foomclous-data:/data \
-  --link foomclous-postgres:postgres \
+  --link fc-db:fc-db \
   cxaryoro/foomclous-backend:latest
-
-# 3. 启动前端
-docker run -d \
-  --name foomclous-frontend \
-  -e VITE_API_URL=https://co.zrn.qzz.io \
-  -p 47832:80 \
-  cxaryoro/foomclous-frontend:latest
 ```
 
-**后端启动时会自动读取 schema.sql 并创建数据库表，无需手动操作。**
+---
 
-### 使用 Docker Compose
+## ✨ 功能特性
 
-需要先将 `docker-compose.prod.yml` 上传到服务器，然后：
+*   📦 **极速上传**: 支持大文件切片、断点续传。
+*   🖼️ **智能预览**: 图片自动缩略图（WebP）、视频实时流播放。
+*   🤖 **Bot 友好**: 提供完善的外部 API，轻松集成 Telegram 等机器人。
+*   🌍 **多语言**: 内置 i18n 系统，支持中英文切换。
+*   🐳 **全容器化**: 一键水平扩展，部署极其简单。
 
-```bash
-docker-compose -f docker-compose.prod.yml up -d
-```
+---
 
-## 开发模式（本地）
+## 📂 项目结构
 
-### 1. 安装依赖
-```bash
-# 后端
-cd backend && npm install
-
-# 前端
-cd frontend && npm install
-```
-
-### 2. 启动服务
-```bash
-# 后端
-cd backend && npm run dev
-
-# 前端
-cd frontend && npm run dev
-```
-
-### 3. 访问应用
-- 前端: http://localhost:5173
-- 后端 API: http://localhost:51947
-
-## 服务端口
-
-| 服务 | 端口 | 说明 |
-|------|------|------|
-| 前端 | 47832 | HTTP |
-| 后端 API | 51947 | API |
-| PostgreSQL | 5432 | 数据库 |
-
-## 项目结构
-
-```
+```text
 FoomClous/
-├── frontend/                 # 前端代码
-│   ├── src/
-│   ├── Dockerfile
-│   ├── nginx.conf
-├── backend/                  # 后端代码
-│   ├── src/
-│   │   ├── routes/          # API 路由
-│   │   ├── middleware/      # 中间件
-│   │   ├── db/              # 数据库
-│   │   └── index.ts         # 入口文件
-│   ├── Dockerfile
-├── docker-compose.yml          # 开发环境
-├── docker-compose.prod.yml      # 生产环境
-└── README.md
+├── frontend/    # React 网页前端
+├── backend/     # Node.js API 服务
+├── init.sql     # 数据库初始化脚本
+└── docker-compose.prod.yml  # 生产环境部署配置
 ```
 
-## API 接口
+---
 
-### 文件管理
+## 📄 开源协议
 
-| 方法 | 路径 | 描述 |
-|------|------|------|
-| GET | `/api/files` | 获取文件列表 |
-| GET | `/api/files/:id` | 获取单个文件信息 |
-| GET | `/api/files/:id/preview` | 预览文件 |
-| GET | `/api/files/:id/download` | 下载文件 |
-| DELETE | `/api/files/:id` | 删除文件 |
-| GET | `/api/files/:id/thumbnail` | 获取缩略图 |
-
-### 上传
-
-| 方法 | 路径 | 描述 |
-|------|------|------|
-| POST | `/api/upload` | 上传单个文件 |
-| POST | `/api/upload/batch` | 批量上传 |
-| POST | `/api/v1/upload/external` | 外部 API 上传（需要 API Key） |
-
-### 存储统计
-
-| 方法 | 路径 | 描述 |
-|------|------|------|
-| GET | `/api/storage/stats` | 获取存储统计 |
-| GET | `/api/storage/stats/types` | 获取文件类型统计 |
-
-### 外部 API
-
-外部 API 用于集成第三方应用（如 Telegram Bot）。
-
-请求头示例：
-```
-X-API-Key: fc_xxxxxx
-```
-
-示例：
-```bash
-curl -X POST http://localhost:51947/api/v1/upload/external \
-  -H "X-API-Key: fc_your_api_key" \
-  -F "file=@image.png"
-```
-
-## 环境变量
-
-| 变量 | 描述 | 默认值 |
-|--------|------|--------|
-| `DATABASE_URL` | PostgreSQL 连接字符串 | `postgresql://foomclous:password@localhost:5432/foomclous` |
-| `PORT` | 后端端口 | `51947` |
-| `UPLOAD_DIR` | 上传文件目录 | `./data/uploads` |
-| `THUMBNAIL_DIR` | 缩略图目录 | `./data/thumbnails` |
-| `CORS_ORIGIN` | CORS 来源 | `*` |
-| `VITE_API_URL` | 前端 API 地址 | `http://localhost:51947` |
-
-## 功能特性
-
-- ✅ 文件上传（支持拖拽、进度显示）
-- ✅ 实时图片预览
-- ✅ 自动生成缩略图（WebP 格式）
-- ✅ 视频流播放（Range 请求支持）
-- ✅ 存储空间统计
-- ✅ 外部 API 接口
-- ✅ Docker 容器化
-- ✅ i18n 国际化支持
-
-## License
-
-MIT
+基于 [MIT License](LICENSE) 开源。欢迎提交 Pull Request 贡献代码！
