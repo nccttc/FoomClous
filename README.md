@@ -17,12 +17,15 @@ wget https://raw.githubusercontent.com/nccttc/foomclous/main/docker-compose.prod
 ```
 
 ### 2. 配置并运行
-创建一个 `.env` 文件（或直接编辑 `docker-compose.yml` 中的环境变量），填入你的配置：
+下载 `.env.example` 并重命名为 `.env`，然后根据实际情况修改配置：
 
 ```bash
-# 修改 VITE_API_URL 为你的实际访问地址
-# 修改 DB_PASSWORD 为你的数据库密码
+wget https://raw.githubusercontent.com/nccttc/foomclous/main/.env.example -O .env
 
+# 编辑 .env 文件
+# vi .env
+
+# 启动服务
 docker-compose up -d
 ```
 
