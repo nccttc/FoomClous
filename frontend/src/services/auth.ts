@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:51947';
+import { API_BASE } from './config';
 
 const TOKEN_KEY = 'foomclous_token';
 const TOKEN_EXPIRY_KEY = 'foomclous_token_expiry';
