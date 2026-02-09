@@ -6,7 +6,7 @@ services:
     build:
       context: ./frontend
       args:
-        - VITE_API_URL=${VITE_API_URL:-https://jk.foomclous.dpdns.org}
+        - VITE_API_URL=https://jk.foomclous.dpdns.org
     container_name: foomclous-frontend
     ports:
       - "47832:80"
@@ -29,9 +29,9 @@ services:
       - UPLOAD_DIR=/data/uploads
       - THUMBNAIL_DIR=/data/thumbnails
       - CHUNK_DIR=/data/chunks
-      - CORS_ORIGIN=https://co.zrn.qzz.io
+      - CORS_ORIGIN=https://m.foomclous.dpdns.org
       - ACCESS_PASSWORD_HASH=${ACCESS_PASSWORD_HASH:-}
-      - DOMAIN=${DOMAIN:-co.zrn.qzz.io}
+      - DOMAIN=jk.foomclous.dpdns.org
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_API_ID=${TELEGRAM_API_ID:-}
       - TELEGRAM_API_HASH=${TELEGRAM_API_HASH:-}

@@ -1,13 +1,14 @@
 import { authService } from './auth';
 
 const getApiBase = () => {
+    // 优先使用构建时注入的变量
     const envUrl = import.meta.env.VITE_API_URL;
-    if (envUrl && envUrl !== 'http://localhost:51947') {
+    if (envUrl && envUrl !== 'http://localhost:51947' && envUrl !== '') {
         return envUrl;
     }
-    // 如果没有配置或在生产环境且为 localhost，尝试使用相对路径
+
+    // 如果在生产环境且没有配置，fallback 到相对路径（同域代理模式）
     if (import.meta.env.PROD) {
-        // 在生产环境下，如果通过 Nginx 代理，直接使用相对路径即可
         return '';
     }
     return 'http://localhost:51947';
