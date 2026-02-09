@@ -45,7 +45,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE TRIGGER files_updated_at
     BEFORE UPDATE ON files
     FOR EACH ROW
-
+    EXECUTE FUNCTION update_updated_at();
 -- 系统设置表
 CREATE TABLE IF NOT EXISTS system_settings (
     key VARCHAR(255) PRIMARY KEY,
