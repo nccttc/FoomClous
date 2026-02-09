@@ -5,10 +5,10 @@ const getApiBase = () => {
     if (envUrl && envUrl !== 'http://localhost:51947') {
         return envUrl;
     }
-    // 如果没有配置或在生产环境且为 localhost，尝试使用当前域名
+    // 如果没有配置或在生产环境且为 localhost，尝试使用相对路径
     if (import.meta.env.PROD) {
-        // 在生产环境下，如果前后端同域或通过代理，可以直接使用相对路径或当前 origin
-        return window.location.origin;
+        // 在生产环境下，如果通过 Nginx 代理，直接使用相对路径即可
+        return '';
     }
     return 'http://localhost:51947';
 };
