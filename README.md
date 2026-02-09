@@ -13,7 +13,7 @@
 
 ```bash
 mkdir foomclous && cd foomclous
-wget https://raw.githubusercontent.com/cxari/FoomClous/main/docker-compose.prod.yml -O docker-compose.yml
+wget https://raw.githubusercontent.com/nccttc/foomclous/main/docker-compose.prod.yml -O docker-compose.yml
 ```
 
 ### 2. 配置并运行
