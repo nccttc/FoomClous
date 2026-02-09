@@ -57,6 +57,26 @@ docker compose -f docker-compose.prod.yml up -d
 
 ---
 
+## 🤖 Telegram Bot 配置指南
+
+集成 Telegram Bot 后，你可以通过聊天窗口直接上传文件、管理云端数据。
+
+### 1. 获取 Bot Token (必选)
+1. 在 Telegram 中搜索 [@BotFather](https://t.me/BotFather) 并开始对话。
+2. 发送 `/newbot` 命令，按照提示为你的机器人起个名字。
+3. 成功后，BotFather 会发给你一串 `HTTP API TOKEN` (例如 `123456:ABC-DEF...`)。
+4. 将此 Token 填入 `.env` 的 `TELEGRAM_BOT_TOKEN`。
+
+### 2. 获取 API ID 和 API Hash (可选，增强功能)
+*如果你需要使用更高级的 TDLib 或特定接口功能，请按以下步骤操作：*
+1. 访问 [my.telegram.org](https://my.telegram.org) 并登录你的 Telegram 账号。
+2. 进入 `API development tools`。
+3. 创建一个新的应用（App title 和 Short name 可随意填写）。
+4. 复制 `App api_id` 和 `App api_hash`。
+5. 分别填入 `.env` 的 `TELEGRAM_API_ID` 和 `TELEGRAM_API_HASH`。
+
+---
+
 ## 🔐 安全与访问控制
 
 如果设置了 `ACCESS_PASSWORD_HASH`，访问网页和 API 将需要输入密码。本应用目前使用 **SHA-256** 算法进行哈希。
