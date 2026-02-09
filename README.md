@@ -26,7 +26,7 @@ docker run -d \
   postgres:16-alpine
 
 # 初始化数据库表
-docker exec -i foomclous-postgres psql -U foomclous -d foomclous < backend/src/db/schema.sql
+docker exec -i foomclous-postgres psql -U foomclous -d foomclous < init.sql
 ```
 
 #### 2. 启动后端
