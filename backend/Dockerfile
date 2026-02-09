@@ -11,8 +11,6 @@ RUN npm install
 
 # 复制源代码并构建
 COPY . .
-# 确保 .env 被复制（如果它不在上下文根目录）
-COPY .env .env
 RUN npm run build
 
 
