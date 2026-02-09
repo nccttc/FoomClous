@@ -17,11 +17,10 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR || './data/uploads';
  * 优先使用 DOMAIN 环境变量，其次使用请求头中的 Host
  */
 function getOneDriveRedirectUri(req: Request): string {
-    const domain = process.env.DOMAIN;
-    if (domain) {
-        // 如果环境变量中有域名，则使用该域名
-        // 假设通过 HTTPS 访问（生产环境标准）
-        return `https://${domain}/api/storage/onedrive/callback`;
+    // 优先使用 VITE_API_URL，这是最准确的后端接口地址
+    const apiBase = process.env.VITE_API_URL;
+    if (apiBase) {
+        return `${apiBase.replace(/\/$/, '')}/api/storage/onedrive/callback`;
     }
     // 回退到动态获取
     const protocol = req.protocol;
