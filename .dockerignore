@@ -4,3 +4,5 @@ node_modules
 .env.local
 dist
 foomclous.tar.gz
+verify_sanitization.js
+verify_sanitization.ts
