@@ -329,6 +329,24 @@ class FileAPI {
         if (!response.ok) throw new Error('健康检查失败');
         return response.json();
     }
+
+    async getOneDriveAuthUrl(clientId: string, tenantId: string, redirectUri: string): Promise<{ authUrl: string }> {
+        const response = await fetch(`${API_BASE}/api/storage/config/onedrive/auth-url`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...authService.getAuthHeaders(),
+            },
+            body: JSON.stringify({ clientId, tenantId, redirectUri }),
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || '获取授权地址失败');
+        }
+
+        return response.json();
+    }
 }
 
 export const fileApi = new FileAPI();

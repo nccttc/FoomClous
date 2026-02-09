@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
-import { HardDrive, ChevronRight, Moon, Sun, Monitor, Palette, Globe, Cloud, Server, Database, Save, CheckCircle, AlertCircle } from "lucide-react";
+import { HardDrive, ChevronRight, Moon, Sun, Monitor, Palette, Globe, Cloud, Server, Database, CheckCircle } from "lucide-react";
 import { Button } from "../ui/Button";
 import { LanguageToggle } from "../ui/LanguageToggle";
 import { useTheme } from "../../hooks/useTheme";
@@ -72,7 +72,7 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
     // OneDrive Form State
     const [odClientId, setOdClientId] = useState("");
     const [odClientSecret, setOdClientSecret] = useState("");
-    const [odRefreshToken, setOdRefreshToken] = useState("");
+    const [odRefreshToken] = useState("");
     const [odTenantId, setOdTenantId] = useState("");
 
     // Load initial config
@@ -120,19 +120,51 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
     };
 
     const handleSaveOneDriveConfig = async () => {
-        if (!odClientId || !odRefreshToken) {
-            alert("请填写必要字段 (Client ID 和 Refresh Token)");
+        if (!odClientId) {
+            alert("请填写 Client ID");
             return;
         }
         setIsSaving(true);
         try {
-            await fileApi.updateOneDriveConfig(odClientId, odClientSecret, odRefreshToken, odTenantId);
-            const data = await fileApi.getStorageConfig();
-            setConfig(data);
-            setShowOneDriveForm(false);
-            alert("OneDrive 配置已保存并启用");
+            // 首先保存基础配置（Client ID 和 Secret)
+            // 注意：此时可能还没有 Refresh Token，后端需要处理这种情况
+            await fileApi.updateOneDriveConfig(odClientId, odClientSecret, odRefreshToken || 'pending', odTenantId || 'common');
+
+            // 构建 Redirect URI
+            const protocol = window.location.protocol;
+            // 如果前端是代理模式，回调地址通常是后端域名下的某个路径
+            const redirectUri = `${protocol}//jk.foomclous.dpdns.org/api/storage/onedrive/callback`;
+
+            // 获取授权 URL
+            const { authUrl } = await fileApi.getOneDriveAuthUrl(odClientId, odTenantId || 'common', redirectUri);
+
+            // 打开弹出窗口进行授权
+            const width = 600;
+            const height = 700;
+            const left = window.screenX + (window.innerWidth - width) / 2;
+            const top = window.screenY + (window.innerHeight - height) / 2;
+
+            window.open(
+                authUrl,
+                'OneDriveAuth',
+                `width=${width},height=${height},left=${left},top=${top},status=yes,toolbar=no,menubar=no`
+            );
+
+            // 监听来自授权窗口的消息
+            const messageHandler = async (event: MessageEvent) => {
+                if (event.data === 'onedrive_auth_success') {
+                    console.log('OneDrive Auth Success message received!');
+                    // 重新加载配置
+                    const newData = await fileApi.getStorageConfig();
+                    setConfig(newData);
+                    alert("OneDrive 授权成功并已启用！");
+                    window.removeEventListener('message', messageHandler);
+                }
+            };
+            window.addEventListener('message', messageHandler);
+
         } catch (error: any) {
-            alert("保存配置失败: " + error.message);
+            alert("发起授权失败: " + error.message);
         } finally {
             setIsSaving(false);
         }
@@ -260,59 +292,81 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
                             exit={{ height: 0, opacity: 0 }}
                             className="bg-muted/30 border-t border-border/50"
                         >
-                            <div className="p-6 space-y-4">
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium">Client ID</label>
-                                    <input
-                                        type="text"
-                                        value={odClientId}
-                                        onChange={e => setOdClientId(e.target.value)}
-                                        className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm"
-                                        placeholder="Azure App Client ID"
-                                    />
+                            <div className="p-6 space-y-6">
+                                <div className="space-y-4">
+                                    <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+                                        <Database className="h-4 w-4" />
+                                        <span>Entra ID (Azure) 应用信息</span>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground leading-relaxed">
+                                        前往 <a href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">Microsoft Entra ID 控制台</a> 并登录。授权账号可与最终存储账号不同。
+                                        注册应用时，<b>重定向 URI</b> 请选择 <code>公共客户端/原生</code>，并填写：
+                                        <code className="block mt-1 p-1 bg-muted rounded text-primary">https://jk.foomclous.dpdns.org/api/storage/onedrive/callback</code>
+                                    </p>
                                 </div>
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium">Tenant ID (可选)</label>
-                                    <input
-                                        type="text"
-                                        value={odTenantId}
-                                        onChange={e => setOdTenantId(e.target.value)}
-                                        className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm"
-                                        placeholder="Directory (tenant) ID - 默认为 common"
-                                    />
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium">应用程序 (客户端) ID</label>
+                                        <input
+                                            type="text"
+                                            value={odClientId}
+                                            onChange={e => setOdClientId(e.target.value)}
+                                            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                            placeholder="Azure App Client ID"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium">租户 ID (Tenant ID)</label>
+                                        <input
+                                            type="text"
+                                            value={odTenantId}
+                                            onChange={e => setOdTenantId(e.target.value)}
+                                            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                            placeholder="默认为 common"
+                                        />
+                                    </div>
                                 </div>
+
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium">Client Secret (可选)</label>
+                                    <label className="text-sm font-medium">客户端密码 (Client Secret - 可选)</label>
                                     <input
                                         type="password"
                                         value={odClientSecret}
                                         onChange={e => setOdClientSecret(e.target.value)}
-                                        className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm"
-                                        placeholder="Azure App Client Secret (公共客户端可留空)"
+                                        className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                        placeholder="公共客户端模式可不填"
                                     />
                                 </div>
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium">Refresh Token</label>
-                                    <textarea
-                                        value={odRefreshToken}
-                                        onChange={e => setOdRefreshToken(e.target.value)}
-                                        className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm min-h-[80px]"
-                                        placeholder="User Refresh Token (offline_access)"
-                                    />
+
+                                <div className="p-4 rounded-xl border border-blue-500/20 bg-blue-500/5 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="space-y-0.5">
+                                            <h4 className="text-sm font-medium">账号授权</h4>
+                                            <p className="text-xs text-muted-foreground">点击下方按钮前往微软页面完成授权，系统将全自动获取令牌。</p>
+                                        </div>
+                                        <Button
+                                            size="sm"
+                                            onClick={handleSaveOneDriveConfig}
+                                            disabled={isSaving || !odClientId}
+                                            className="shadow-lg shadow-primary/20"
+                                        >
+                                            {isSaving ? "发起授权中..." : "保存并开始授权"}
+                                        </Button>
+                                    </div>
                                 </div>
-                                <div className="flex justify-end gap-3 pt-2">
-                                    <Button variant="ghost" onClick={() => setShowOneDriveForm(false)}>取消</Button>
-                                    <Button onClick={handleSaveOneDriveConfig} disabled={isSaving}>
-                                        <Save className="h-4 w-4 mr-2" />
-                                        {isSaving ? "保存中..." : "保存并启用"}
-                                    </Button>
-                                </div>
-                                <div className="flex items-start gap-2 text-xs text-muted-foreground bg-yellow-500/10 p-3 rounded-lg border border-yellow-500/20 text-yellow-600 dark:text-yellow-400">
-                                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                                    <p>
-                                        您需要先在 Azure Portal 注册应用，并获取 Client ID、具有 <code>Files.ReadWrite.All</code> 和 <code>offline_access</code> 权限的 Refresh Token。<br />
-                                        如果您使用的是"公共客户端"模式（推荐），Client Secret 可以留空。
-                                    </p>
+
+                                {config?.onedrive.hasRefreshToken && (
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium opacity-50">Refresh Token (只读)</label>
+                                        <div className="px-3 py-2 rounded-lg border border-border bg-black/5 text-xs font-mono text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap">
+                                            已配置 (加密隐藏)
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="flex justify-end pt-2">
+                                    <Button variant="ghost" onClick={() => setShowOneDriveForm(false)}>关闭</Button>
                                 </div>
                             </div>
                         </motion.div>

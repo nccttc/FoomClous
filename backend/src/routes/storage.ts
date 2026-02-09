@@ -110,6 +110,84 @@ router.get('/config', async (_req: Request, res: Response) => {
     }
 });
 
+// 获取 OneDrive 授权 URL
+router.post('/config/onedrive/auth-url', async (req: Request, res: Response) => {
+    try {
+        const { clientId, tenantId, redirectUri } = req.body;
+        if (!clientId || !redirectUri) {
+            return res.status(400).json({ error: '缺少 Client ID 或 Redirect URI' });
+        }
+
+        const { OneDriveStorageProvider } = await import('../services/storage.js');
+        const authUrl = OneDriveStorageProvider.generateAuthUrl(clientId, tenantId || 'common', redirectUri);
+        res.json({ authUrl });
+    } catch (error) {
+        console.error('获取授权 URL 失败:', error);
+        res.status(500).json({ error: '获取授权 URL 失败' });
+    }
+});
+
+// OneDrive OAuth 回调
+router.get('/onedrive/callback', async (req: Request, res: Response) => {
+    try {
+        const { code, state, error, error_description } = req.query;
+
+        if (error) {
+            return res.send(`授权失败: ${error_description || error}`);
+        }
+
+        if (!code) {
+            return res.send('缺少授权码 (code)');
+        }
+
+        // 从临时存储或数据库中恢复之前发起的配置请求信息
+        // 简化起见，我们目前可以从数据库中读出最后一次尝试配置的 clientId/secret，或者要求前端在 state 中带上必要的参数
+        // 但安全起见，我们假设用户在配置页面已经输入了这些信息并存在了系统设置中（未完成状态）
+        const { storageManager, OneDriveStorageProvider } = await import('../services/storage.js');
+        const clientId = await storageManager.getSetting('onedrive_client_id');
+        const clientSecret = await storageManager.getSetting('onedrive_client_secret') || '';
+        const tenantId = await storageManager.getSetting('onedrive_tenant_id') || 'common';
+
+        // 我们需要知道当初请求授权时用的 redirectUri，通常就是当前 URL 的前缀
+        const protocol = req.protocol;
+        const host = req.get('host');
+        const redirectUri = `${protocol}://${host}/api/storage/onedrive/callback`;
+
+        if (!clientId) {
+            return res.send('配置信息丢失（Client ID 未找到），请返回设置页面重试。');
+        }
+
+        const tokens = await OneDriveStorageProvider.exchangeCodeForToken(clientId, clientSecret, tenantId, redirectUri, code as string);
+
+        // 保存刷新令牌并切换
+        await storageManager.updateOneDriveConfig(clientId, clientSecret, tokens.refresh_token, tenantId);
+
+        res.send(`
+            <html>
+                <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0;">
+                    <div style="text-align: center; padding: 40px; border-radius: 20px; background: #f0fdf4; border: 1px solid #bbf7d0;">
+                        <h2 style="color: #16a34a; margin-bottom: 10px;">🎉 授权成功！</h2>
+                        <p style="color: #15803d; margin-bottom: 20px;">OneDrive 已成功连接并启用。</p>
+                        <button onclick="window.close()" style="padding: 10px 20px; background: #16a34a; color: white; border: none; border-radius: 8px; cursor: pointer;">关闭此窗口</button>
+                        <script>
+                            setTimeout(() => {
+                                // 尝试通知父窗口（如果是在弹出窗口中打开的）
+                                if (window.opener) {
+                                    window.opener.postMessage('onedrive_auth_success', '*');
+                                }
+                                window.close();
+                            }, 3000);
+                        </script>
+                    </div>
+                </body>
+            </html>
+        `);
+    } catch (error: any) {
+        console.error('OneDrive 回调处理失败:', error);
+        res.status(500).send(`授权处理出错: ${error.message}`);
+    }
+});
+
 // 更新 OneDrive 配置
 router.put('/config/onedrive', async (req: Request, res: Response) => {
     try {

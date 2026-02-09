@@ -107,6 +107,35 @@ export class OneDriveStorageProvider implements IStorageProvider {
     }
 
     /**
+     * 生成 OAuth 授权 URL
+     */
+    static generateAuthUrl(clientId: string, tenantId: string = 'common', redirectUri: string): string {
+        const scope = encodeURIComponent('Files.ReadWrite.All offline_access');
+        const encodedRedirect = encodeURIComponent(redirectUri);
+        return `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?client_id=${clientId}&scope=${scope}&response_type=code&redirect_uri=${encodedRedirect}&response_mode=query`;
+    }
+
+    /**
+     * 使用授权码交换令牌
+     */
+    static async exchangeCodeForToken(clientId: string, clientSecret: string, tenantId: string = 'common', redirectUri: string, code: string) {
+        const params = new URLSearchParams();
+        params.append('client_id', clientId);
+        if (clientSecret) params.append('client_secret', clientSecret);
+        params.append('code', code);
+        params.append('grant_type', 'authorization_code');
+        params.append('redirect_uri', redirectUri);
+
+        const endpoint = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
+        const response = await axios.post(endpoint, params.toString(), {
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            timeout: 30000
+        });
+
+        return response.data; // 包含 access_token, refresh_token, expires_in 等
+    }
+
+    /**
      * 获取有效的访问令牌，自动刷新过期令牌
      */
     private async getAccessToken(): Promise<string> {
