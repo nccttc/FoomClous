@@ -2,7 +2,7 @@
   <img src="backend/logo.png" alt="FoomClous Logo" width="150" />
 </p>
 
-<h1 align="center">☁️ FoomClous</h1>
+<h1 align="center"> FoomClous</h1>
 
 <p align="center">
   <img src="https://img.shields.io/github/license/nccttc/foomclous?style=flat-square&color=blue" alt="License" />
