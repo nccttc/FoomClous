@@ -9,7 +9,7 @@ services:
         - VITE_API_URL=${VITE_API_URL:-https://jk.foomclous.dpdns.org}
     container_name: foomclous-frontend
     ports:
-      - "127.0.0.1:47832:80"
+      - "47832:80"
     networks:
       - foomclous-network
     restart: unless-stopped
@@ -19,7 +19,7 @@ services:
     build: ./backend
     container_name: foomclous-backend
     ports:
-      - "127.0.0.1:51947:51947"
+      - "51947:51947"
     depends_on:
       postgres:
         condition: service_healthy
