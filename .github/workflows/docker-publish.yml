@@ -13,14 +13,6 @@ on:
       - master
   workflow_dispatch:
 
-env:
-  # 请在 GitHub Secrets 中设置以下变量:
-  # DOCKER_USERNAME: Docker Hub 用户名
-  # DOCKER_PASSWORD: Docker Hub 密码或 Access Token
-  # IMAGE_NAME: Docker Hub 镜像名称 (例如: username/foomclous)
-  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-  IMAGE_NAME: ${{ secrets.IMAGE_NAME }}
-
 jobs:
   # 构建 Backend 镜像
   build-backend:
@@ -42,7 +34,7 @@ jobs:
         id: meta-backend
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.IMAGE_NAME }}/foomclous-backend
+          images: ${{ secrets.DOCKER_USERNAME }}/foomclous-backend
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -58,8 +50,6 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-backend.outputs.tags }}
           labels: ${{ steps.meta-backend.outputs.labels }}
-          cache-from: type=registry,ref=${{ secrets.IMAGE_NAME }}/foomclous-backend:buildcache
-          cache-to: type=registry,ref=${{ secrets.IMAGE_NAME }}/foomclous-backend:buildcache,mode=max
 
   # 构建 Frontend 镜像
   build-frontend:
@@ -81,7 +71,7 @@ jobs:
         id: meta-frontend
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.IMAGE_NAME }}/foomclous-frontend
+          images: ${{ secrets.DOCKER_USERNAME }}/foomclous-frontend
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -97,5 +87,3 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-frontend.outputs.tags }}
           labels: ${{ steps.meta-frontend.outputs.labels }}
-          cache-from: type=registry,ref=${{ secrets.IMAGE_NAME }}/foomclous-frontend:buildcache
-          cache-to: type=registry,ref=${{ secrets.IMAGE_NAME }}/foomclous-frontend:buildcache,mode=max
