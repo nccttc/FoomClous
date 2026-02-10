@@ -37,11 +37,9 @@ export async function handleStorage(message: Api.Message): Promise<void> {
         const usedPercent = Math.round(((diskSpace.size - diskSpace.free) / diskSpace.size) * 100);
 
         const queueStats = getDownloadQueueStats();
-        const queueInfo = queueStats.total > 0
-            ? `\n\n**当前下载队列:**\n` +
+        const queueInfo = `\n\n**当前下载队列:**\n` +
             `├ 🔄 正在处理: ${queueStats.active}\n` +
-            `└ ⏳ 等待中: ${queueStats.pending}`
-            : '';
+            `└ ⏳ 等待中: ${queueStats.pending}`;
 
         const reply = `📊 **存储空间统计**\n\n` +
             `**服务器磁盘:**\n` +
