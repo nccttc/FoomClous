@@ -212,54 +212,60 @@ router.post('/complete', async (req: Request, res: Response) => {
         fs.rmSync(chunkDir, { recursive: true });
         uploadSessions.delete(uploadId);
 
-        // 获取文件信息
-        // 获取文件信息
-        const fileType = getFileType(session.mimeType);
+        // 5. 在保存到永久存储前生成缩略图和获取尺寸
+        let thumbnailPath = null;
+        let width = null;
+        let height = null;
 
-        // 使用存储管理器保存文件（支持 OneDrive 等）
-        const provider = storageManager.getProvider();
-        let savedPath: string;
-        try {
-            // finalPath 现在作为临时合并文件
-            savedPath = await provider.saveFile(finalPath, storedName, session.mimeType);
-        } catch (err) {
-            console.error('保存文件到存储提供商失败:', err);
-            // 如果失败，尝试保留在本地以便恢复，或者这里直接抛出
-            throw err;
-        }
-
-        // 如果不是本地存储，且文件已成功上传，删除本地临时合并文件
-        // 注意：provider.saveFile 在 LocalStorageProvider 中直接使用路径，可能就是 finalPath
-        // 所以我们检查如果是 'onedrive'，则删除本地文件
-        if (provider.name !== 'local') {
+        if (session.mimeType.startsWith('image/') || session.mimeType.startsWith('video/')) {
             try {
-                fs.unlinkSync(finalPath);
-            } catch (e) {
-                console.warn('清理本地临时文件失败:', e);
+                const thumbResult = await generateThumbnail(finalPath, session.filename, session.mimeType);
+                if (thumbResult) {
+                    thumbnailPath = thumbResult;
+                    const dims = await getImageDimensions(finalPath, session.mimeType);
+                    width = dims.width;
+                    height = dims.height;
+                } else if (session.mimeType.startsWith('image/')) {
+                    const dims = await getImageDimensions(finalPath, session.mimeType);
+                    width = dims.width;
+                    height = dims.height;
+                }
+            } catch (error) {
+                console.error('生成缩略图失败:', error);
             }
         }
 
-        const thumbnailPath = await generateThumbnail(savedPath, storedName, session.mimeType);
-        const dimensions = await getImageDimensions(savedPath, session.mimeType);
+        // 6. 保存到永久存储
+        let storedPath = '';
+        const provider = storageManager.getProvider();
+        try {
+            storedPath = await provider.saveFile(finalPath, session.filename, session.mimeType);
+        } catch (err) {
+            if (fs.existsSync(finalPath)) fs.unlinkSync(finalPath);
+            throw err;
+        }
 
-        // 保存到数据库
-        const result = await query(`
-            INSERT INTO files (name, stored_name, type, mime_type, size, path, thumbnail_path, width, height, source, folder)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            RETURNING *
-        `, [
-            session.filename,
-            storedName,
-            fileType,
-            session.mimeType,
-            session.totalSize,
-            savedPath, // 使用 provider 返回的路径
-            thumbnailPath,
-            dimensions.width,
-            dimensions.height,
-            provider.name, // 使用 provider 名称
-            session.folder || null,
-        ]);
+        // 清理合并后的临时文件
+        if (fs.existsSync(finalPath)) {
+            try {
+                fs.unlinkSync(finalPath);
+            } catch (e) {
+                // Ignore
+            }
+        }
+
+        // 7. 保存到数据库
+        const type = session.mimeType.startsWith('image/') ? 'image' :
+            session.mimeType.startsWith('video/') ? 'video' :
+                session.mimeType.startsWith('audio/') ? 'audio' : 'other';
+
+        const result = await query(
+            `INSERT INTO files 
+            (name, stored_name, type, mime_type, size, path, thumbnail_path, width, height, source, folder) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
+            RETURNING id, created_at, name, type, size`,
+            [session.filename, session.filename, type, session.mimeType, session.totalSize, storedPath, thumbnailPath, width, height, provider.name, session.folder || null]
+        );
 
         const savedFile = result.rows[0];
 
@@ -269,7 +275,7 @@ router.post('/complete', async (req: Request, res: Response) => {
                 id: savedFile.id,
                 name: savedFile.name,
                 type: savedFile.type,
-                size: formatFileSize(savedFile.size),
+                size: savedFile.size,
                 previewUrl: `/api/files/${savedFile.id}/preview`,
                 thumbnailUrl: thumbnailPath ? `/thumbnails/${path.basename(thumbnailPath)}` : undefined,
             },

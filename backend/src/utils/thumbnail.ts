@@ -40,7 +40,7 @@ export async function generateThumbnail(filePath: string, storedName: string, mi
                         folder: THUMBNAIL_DIR,
                         filename: thumbName,
                         size: '400x300',
-                        timestamps: ['10%'],
+                        timestamps: ['10%', '00:00:01'], // Try 10% first, then 1 second
                     })
                     .on('start', (commandLine) => {
                         console.log(`🎬 Spawned Ffmpeg with command: ${commandLine}`);

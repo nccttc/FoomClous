@@ -77,6 +77,31 @@ const handleUpload = async (req: Request, res: Response, source: string = 'web')
         // 1. 获取当前存储提供商
         const provider = storageManager.getProvider();
 
+        // 2. 在保存到永久存储前生成缩略图和获取尺寸
+        // 这样即使是 OneDrive 等非本地存储，也能在本地临时文件被清理前生成缩略图
+        let thumbnailPath = null;
+        let width = null;
+        let height = null;
+
+        if (mimeType.startsWith('image/') || mimeType.startsWith('video/')) {
+            try {
+                const thumbResult = await generateThumbnail(tempPath, storedName, mimeType);
+                if (thumbResult) {
+                    thumbnailPath = thumbResult;
+                    const dims = await getImageDimensions(tempPath, mimeType);
+                    width = dims.width;
+                    height = dims.height;
+                } else if (mimeType.startsWith('image/')) {
+                    const dims = await getImageDimensions(tempPath, mimeType);
+                    width = dims.width;
+                    height = dims.height;
+                }
+            } catch (error) {
+                console.error('生成缩略图失败:', error);
+            }
+        }
+
+        // 3. 保存到永久存储
         let storedPath = '';
         try {
             storedPath = await provider.saveFile(tempPath, storedName, mimeType);
@@ -91,40 +116,6 @@ const handleUpload = async (req: Request, res: Response, source: string = 'web')
                 fs.unlinkSync(tempPath);
             } catch (e) {
                 console.warn('Failed to clean up temp file:', e);
-            }
-        }
-
-        let thumbnailPath = null;
-        let width = null;
-        let height = null;
-
-        if (mimeType.startsWith('image/') || mimeType.startsWith('video/')) {
-            try {
-                // 如果是本地存储，storedPath 就是本地路径，可以直接生成缩略图
-                if (provider.name === 'local') {
-                    const thumbResult = await generateThumbnail(storedPath, storedName, mimeType);
-                    if (thumbResult) {
-                        thumbnailPath = thumbResult;  // generateThumbnail returns string | null
-                        // Note: The previous implementation of generateThumbnail returned a path string, not an object. 
-                        // But looking at the file view of thumbnail.ts:13, it returns Promise<string | null>.
-                        // Wait, in my previous upload.ts view it seemed to return an object? 
-                        // "thumbnailPath = thumbResult.path"
-                        // Let's re-read thumbnail.ts ... it returns `string | null`.
-                        // So I should just assign it.
-
-                        // And getImageDimensions returns { width, height }
-                        const dims = await getImageDimensions(storedPath, mimeType);
-                        width = dims.width;
-                        height = dims.height;
-                    } else if (mimeType.startsWith('image/')) {
-                        const dims = await getImageDimensions(storedPath, mimeType);
-                        width = dims.width;
-                        height = dims.height;
-                    }
-                }
-                // TODO: OneDrive 缩略图生成可以通过 API 获取，或者在前端处理
-            } catch (error) {
-                console.error('生成缩略图失败:', error);
             }
         }
 
