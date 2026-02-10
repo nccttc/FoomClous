@@ -9,6 +9,13 @@ export function generateSignature(fileId: string, expires: number): string {
     return crypto.createHash('sha256').update(data).digest('hex');
 }
 
+// 生成签名的 URL helper
+export function getSignedUrl(fileId: string, type: 'preview' | 'thumbnail' | 'download', expiresIn: number = 24 * 60 * 60) {
+    const expires = Date.now() + (expiresIn * 1000);
+    const sign = generateSignature(fileId, expires);
+    return `/api/files/${fileId}/${type}?sign=${sign}&expires=${expires}`;
+}
+
 // 验证签名中间件
 export function verifySignedUrl(req: Request): boolean {
     const sign = req.query.sign;

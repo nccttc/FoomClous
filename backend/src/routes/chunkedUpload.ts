@@ -5,6 +5,7 @@ import fs from 'fs';
 import { query } from '../db/index.js';
 import { generateThumbnail, getImageDimensions } from '../utils/thumbnail.js';
 import { storageManager } from '../services/storage.js';
+import { getSignedUrl } from '../middleware/signedUrl.js';
 
 const router = Router();
 
@@ -270,18 +271,20 @@ router.post('/complete', async (req: Request, res: Response) => {
             [session.filename, storedName, type, session.mimeType, session.totalSize, storedPath, thumbnailPath, width, height, provider.name, session.folder || null]
         );
 
-        const savedFile = result.rows[0];
+        const newFile = result.rows[0];
 
         res.json({
             success: true,
             file: {
-                id: savedFile.id,
-                name: savedFile.name,
-                type: savedFile.type,
-                size: savedFile.size,
-                previewUrl: `/api/files/${savedFile.id}/preview`,
-                thumbnailUrl: thumbnailPath ? `/thumbnails/${thumbnailPath}` : undefined,
-            },
+                id: newFile.id,
+                name: newFile.name,
+                type: newFile.type,
+                size: newFile.size,
+                thumbnailUrl: thumbnailPath ? getSignedUrl(newFile.id, 'thumbnail') : undefined,
+                previewUrl: getSignedUrl(newFile.id, 'preview'),
+                date: newFile.created_at,
+                source: provider.name
+            }
         });
     } catch (error) {
         console.error('完成上传失败:', error);

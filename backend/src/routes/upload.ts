@@ -8,6 +8,7 @@ import { query } from '../db/index.js';
 import { validateApiKey } from '../middleware/apiKey.js';
 import { generateThumbnail, getImageDimensions } from '../utils/thumbnail.js';
 import { storageManager } from '../services/storage.js';
+import { getSignedUrl } from '../middleware/signedUrl.js';
 
 const router = Router();
 
@@ -144,8 +145,8 @@ const handleUpload = async (req: Request, res: Response, source: string = 'web')
                 name: newFile.name,
                 type: newFile.type,
                 size: newFile.size,
-                thumbnailUrl: thumbnailPath ? `/thumbnails/${thumbnailPath}` : undefined,
-                previewUrl: `/api/files/${newFile.id}/preview`,
+                thumbnailUrl: thumbnailPath ? getSignedUrl(newFile.id, 'thumbnail') : undefined,
+                previewUrl: getSignedUrl(newFile.id, 'preview'),
                 date: newFile.created_at,
                 source: provider.name
             }

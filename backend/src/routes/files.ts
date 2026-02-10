@@ -2,19 +2,12 @@ import { Router, Request, Response } from 'express';
 import { query } from '../db/index.js';
 import fs from 'fs';
 import path from 'path';
-import { generateSignature } from '../middleware/signedUrl.js';
+import { generateSignature, getSignedUrl } from '../middleware/signedUrl.js';
 
 const router = Router();
 
 const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || './data/uploads');
 const THUMBNAIL_DIR = path.resolve(process.env.THUMBNAIL_DIR || './data/thumbnails');
-
-// 生成签名的 URL helper
-function getSignedUrl(fileId: string, type: 'preview' | 'thumbnail' | 'download', expiresIn: number = 24 * 60 * 60) {
-    const expires = Date.now() + (expiresIn * 1000);
-    const sign = generateSignature(fileId, expires);
-    return `/api/files/${fileId}/${type}?sign=${sign}&expires=${expires}`;
-}
 
 // 获取文件列表
 router.get('/', async (_req: Request, res: Response) => {

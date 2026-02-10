@@ -40,28 +40,52 @@ export async function generateThumbnail(filePath: string, storedName: string, mi
             return thumbPath;
         } else if (mimeType.startsWith('video/')) {
             console.log(`[Thumbnail] 🎬 Processing video with Ffmpeg...`);
-            return new Promise((resolve) => {
-                ffmpeg(absFilePath)
-                    .screenshots({
-                        count: 1,
-                        folder: THUMBNAIL_DIR,
-                        filename: thumbName,
-                        size: '400x300',
-                        timestamps: ['10%', '00:00:01'],
-                    })
-                    .on('start', (cmd) => console.log(`[Thumbnail] FFmpeg CMD: ${cmd}`))
-                    .on('end', () => {
-                        console.log(`✅ Video thumbnail created: ${thumbPath}`);
-                        resolve(thumbPath);
-                    })
-                    .on('error', (err) => {
-                        console.error(`❌ Video thumbnail generation failed for ${filePath}:`, err);
-                        resolve(null);
-                    });
-            });
+
+            // 内部辅助函数：尝试特定时间截屏
+            const tryScreenshot = (timestamp: string): Promise<boolean> => {
+                return new Promise((resolve) => {
+                    console.log(`[Thumbnail] 📸 Attempting screenshot at ${timestamp}`);
+                    ffmpeg(absFilePath)
+                        .screenshots({
+                            count: 1,
+                            folder: THUMBNAIL_DIR,
+                            filename: thumbName,
+                            size: '400x300',
+                            timestamps: [timestamp],
+                        })
+                        .on('start', (cmd) => console.log(`[Thumbnail] FFmpeg CMD: ${cmd}`))
+                        .on('end', () => {
+                            // 某些情况下 end 触发了但文件没生成（例如时间点无效）
+                            if (fs.existsSync(thumbPath)) {
+                                console.log(`[Thumbnail] ✅ Video thumbnail created at ${timestamp}`);
+                                resolve(true);
+                            } else {
+                                console.warn(`[Thumbnail] ⚠️  FFmpeg finished but file not found at ${timestamp}`);
+                                resolve(false);
+                            }
+                        })
+                        .on('error', (err) => {
+                            console.error(`[Thumbnail] ❌ FFmpeg error at ${timestamp}:`, err.message);
+                            resolve(false);
+                        });
+                });
+            };
+
+            // 1. 尝试 10% 处
+            let success = await tryScreenshot('10%');
+
+            // 2. 如果失败，尝试 1 秒处
+            if (!success) {
+                console.log(`[Thumbnail] 🔄 Retrying at 1s mark...`);
+                success = await tryScreenshot('00:00:01');
+            }
+
+            if (success) {
+                return thumbPath;
+            }
         }
-    } catch (error) {
-        console.error('Thumbnail generation failed:', error);
+    } catch (error: any) {
+        console.error(`[Thumbnail] ❌ Unexpected error:`, error.message);
     }
     return null;
 }
