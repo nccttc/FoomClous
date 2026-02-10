@@ -219,9 +219,9 @@ router.post('/complete', async (req: Request, res: Response) => {
 
         if (session.mimeType.startsWith('image/') || session.mimeType.startsWith('video/')) {
             try {
-                const thumbResult = await generateThumbnail(finalPath, session.filename, session.mimeType);
+                const thumbResult = await generateThumbnail(finalPath, storedName, session.mimeType);
                 if (thumbResult) {
-                    thumbnailPath = thumbResult;
+                    thumbnailPath = path.basename(thumbResult);
                     const dims = await getImageDimensions(finalPath, session.mimeType);
                     width = dims.width;
                     height = dims.height;
@@ -239,7 +239,7 @@ router.post('/complete', async (req: Request, res: Response) => {
         let storedPath = '';
         const provider = storageManager.getProvider();
         try {
-            storedPath = await provider.saveFile(finalPath, session.filename, session.mimeType);
+            storedPath = await provider.saveFile(finalPath, storedName, session.mimeType);
         } catch (err) {
             if (fs.existsSync(finalPath)) fs.unlinkSync(finalPath);
             throw err;
@@ -264,7 +264,7 @@ router.post('/complete', async (req: Request, res: Response) => {
             (name, stored_name, type, mime_type, size, path, thumbnail_path, width, height, source, folder) 
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
             RETURNING id, created_at, name, type, size`,
-            [session.filename, session.filename, type, session.mimeType, session.totalSize, storedPath, thumbnailPath, width, height, provider.name, session.folder || null]
+            [session.filename, storedName, type, session.mimeType, session.totalSize, storedPath, thumbnailPath, width, height, provider.name, session.folder || null]
         );
 
         const savedFile = result.rows[0];
@@ -277,7 +277,7 @@ router.post('/complete', async (req: Request, res: Response) => {
                 type: savedFile.type,
                 size: savedFile.size,
                 previewUrl: `/api/files/${savedFile.id}/preview`,
-                thumbnailUrl: thumbnailPath ? `/thumbnails/${path.basename(thumbnailPath)}` : undefined,
+                thumbnailUrl: thumbnailPath ? `/thumbnails/${thumbnailPath}` : undefined,
             },
         });
     } catch (error) {

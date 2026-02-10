@@ -78,16 +78,17 @@ const handleUpload = async (req: Request, res: Response, source: string = 'web')
         const provider = storageManager.getProvider();
 
         // 2. 在保存到永久存储前生成缩略图和获取尺寸
-        // 这样即使是 OneDrive 等非本地存储，也能在本地临时文件被清理前生成缩略图
         let thumbnailPath = null;
         let width = null;
         let height = null;
 
         if (mimeType.startsWith('image/') || mimeType.startsWith('video/')) {
             try {
+                // 使用 tempPath 生成，此时文件肯定还在本地
                 const thumbResult = await generateThumbnail(tempPath, storedName, mimeType);
                 if (thumbResult) {
-                    thumbnailPath = thumbResult;
+                    // 我们只在数据库存文件名，避免绝对路径在移植时出问题
+                    thumbnailPath = path.basename(thumbResult);
                     const dims = await getImageDimensions(tempPath, mimeType);
                     width = dims.width;
                     height = dims.height;
@@ -129,20 +130,20 @@ const handleUpload = async (req: Request, res: Response, source: string = 'web')
             `INSERT INTO files 
             (name, stored_name, type, mime_type, size, path, thumbnail_path, width, height, source, folder) 
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
-            RETURNING id, created_at`,
+            RETURNING id, created_at, name, type, size`,
             [originalName, storedName, type, mimeType, size, storedPath, thumbnailPath, width, height, provider.name, folder || null]
         );
 
         const newFile = result.rows[0];
 
         res.json({
-            message: '文件上传成功',
+            success: true,
             file: {
                 id: newFile.id,
-                name: originalName,
-                size,
-                type,
-                thumbnailUrl: thumbnailPath ? `/thumbnails/${path.basename(thumbnailPath)}` : undefined,
+                name: newFile.name,
+                type: newFile.type,
+                size: newFile.size,
+                thumbnailUrl: thumbnailPath ? `/thumbnails/${thumbnailPath}` : undefined,
                 previewUrl: `/api/files/${newFile.id}/preview`,
                 date: newFile.created_at,
                 source: provider.name

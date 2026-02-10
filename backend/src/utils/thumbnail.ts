@@ -3,15 +3,19 @@ import sharp from 'sharp';
 import ffmpeg from 'fluent-ffmpeg';
 import fs from 'fs';
 
-const THUMBNAIL_DIR = process.env.THUMBNAIL_DIR || './data/thumbnails';
+const THUMBNAIL_DIR = path.resolve(process.env.THUMBNAIL_DIR || './data/thumbnails');
 
-// Ensure directory exists
+// 确保目录存在
 if (!fs.existsSync(THUMBNAIL_DIR)) {
     fs.mkdirSync(THUMBNAIL_DIR, { recursive: true });
 }
 
+/**
+ * 为图片或视频生成缩略图
+ * @returns 返回生成的缩略图绝对路径，失败返回 null
+ */
 export async function generateThumbnail(filePath: string, storedName: string, mimeType: string): Promise<string | null> {
-    const thumbName = `thumb_${path.basename(storedName, path.extname(storedName))}.webp`;
+    const thumbName = `thumb_${path.parse(storedName).name}.webp`;
     const thumbPath = path.join(THUMBNAIL_DIR, thumbName);
 
     try {

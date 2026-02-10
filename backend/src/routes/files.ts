@@ -6,8 +6,8 @@ import { generateSignature } from '../middleware/signedUrl.js';
 
 const router = Router();
 
-const UPLOAD_DIR = process.env.UPLOAD_DIR || './data/uploads';
-const THUMBNAIL_DIR = process.env.THUMBNAIL_DIR || './data/thumbnails';
+const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || './data/uploads');
+const THUMBNAIL_DIR = path.resolve(process.env.THUMBNAIL_DIR || './data/thumbnails');
 
 // 生成签名的 URL helper
 function getSignedUrl(fileId: string, type: 'preview' | 'thumbnail' | 'download', expiresIn: number = 24 * 60 * 60) {
