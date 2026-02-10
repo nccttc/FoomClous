@@ -70,12 +70,16 @@ const handleUpload = async (req: Request, res: Response, source: string = 'web')
     const originalName = decodeFilename(file.originalname);
     const mimeType = file.mimetype;
     const size = file.size;
-    const tempPath = file.path;
+    const tempPath = path.resolve(file.path);
     const storedName = file.filename;
+
+    console.log(`[Upload] 📁 Received file: ${originalName} (${mimeType}, ${size} bytes)`);
+    console.log(`[Upload] 🏠 Local temp path: ${tempPath}`);
 
     try {
         // 1. 获取当前存储提供商
         const provider = storageManager.getProvider();
+        console.log(`[Upload] 🛠️  Current storage provider: ${provider.name}`);
 
         // 2. 在保存到永久存储前生成缩略图和获取尺寸
         let thumbnailPath = null;
@@ -84,18 +88,15 @@ const handleUpload = async (req: Request, res: Response, source: string = 'web')
 
         if (mimeType.startsWith('image/') || mimeType.startsWith('video/')) {
             try {
-                // 使用 tempPath 生成，此时文件肯定还在本地
                 const thumbResult = await generateThumbnail(tempPath, storedName, mimeType);
                 if (thumbResult) {
-                    // 我们只在数据库存文件名，避免绝对路径在移植时出问题
                     thumbnailPath = path.basename(thumbResult);
+                    console.log(`[Upload] ✨ Thumbnail generated: ${thumbnailPath}`);
                     const dims = await getImageDimensions(tempPath, mimeType);
                     width = dims.width;
                     height = dims.height;
-                } else if (mimeType.startsWith('image/')) {
-                    const dims = await getImageDimensions(tempPath, mimeType);
-                    width = dims.width;
-                    height = dims.height;
+                } else {
+                    console.log(`[Upload] ⚠️  No thumbnail generated for: ${mimeType}`);
                 }
             } catch (error) {
                 console.error('生成缩略图失败:', error);

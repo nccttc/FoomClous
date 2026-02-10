@@ -15,40 +15,41 @@ if (!fs.existsSync(THUMBNAIL_DIR)) {
  * @returns 返回生成的缩略图绝对路径，失败返回 null
  */
 export async function generateThumbnail(filePath: string, storedName: string, mimeType: string): Promise<string | null> {
+    const absFilePath = path.resolve(filePath);
     const thumbName = `thumb_${path.parse(storedName).name}.webp`;
     const thumbPath = path.join(THUMBNAIL_DIR, thumbName);
 
+    console.log(`[Thumbnail] 🚀 Starting generation for: ${storedName}`);
+    console.log(`[Thumbnail] Source: ${absFilePath}`);
+    console.log(`[Thumbnail] Target: ${thumbPath}`);
+    console.log(`[Thumbnail] MIME: ${mimeType}`);
+
+    if (!fs.existsSync(absFilePath)) {
+        console.error(`[Thumbnail] ❌ Source file does not exist: ${absFilePath}`);
+        return null;
+    }
+
     try {
         if (mimeType.startsWith('image/')) {
-            await sharp(filePath)
-                .resize(400, 300, { fit: 'cover' })
+            console.log(`[Thumbnail] 🖼️  Processing image with Sharp...`);
+            await sharp(absFilePath)
+                .resize(400, 300, { fit: 'inside', withoutEnlargement: true })
                 .webp({ quality: 80 })
                 .toFile(thumbPath);
+            console.log(`[Thumbnail] ✅ Image thumbnail created: ${thumbName}`);
             return thumbPath;
         } else if (mimeType.startsWith('video/')) {
+            console.log(`[Thumbnail] 🎬 Processing video with Ffmpeg...`);
             return new Promise((resolve) => {
-                console.log(`🎬 Start generating thumbnail for video: ${filePath} -> ${thumbName}`);
-                // Ensure THUMBNAIL_DIR exists just in case
-                if (!fs.existsSync(THUMBNAIL_DIR)) {
-                    try {
-                        fs.mkdirSync(THUMBNAIL_DIR, { recursive: true });
-                        console.log(`📁 Created thumbnail directory: ${THUMBNAIL_DIR}`);
-                    } catch (e) {
-                        console.error(`❌ Failed to create thumbnail directory:`, e);
-                    }
-                }
-
-                ffmpeg(filePath)
+                ffmpeg(absFilePath)
                     .screenshots({
                         count: 1,
                         folder: THUMBNAIL_DIR,
                         filename: thumbName,
                         size: '400x300',
-                        timestamps: ['10%', '00:00:01'], // Try 10% first, then 1 second
+                        timestamps: ['10%', '00:00:01'],
                     })
-                    .on('start', (commandLine) => {
-                        console.log(`🎬 Spawned Ffmpeg with command: ${commandLine}`);
-                    })
+                    .on('start', (cmd) => console.log(`[Thumbnail] FFmpeg CMD: ${cmd}`))
                     .on('end', () => {
                         console.log(`✅ Video thumbnail created: ${thumbPath}`);
                         resolve(thumbPath);
@@ -65,27 +66,30 @@ export async function generateThumbnail(filePath: string, storedName: string, mi
     return null;
 }
 
-export async function getImageDimensions(filePath: string, mimeType: string): Promise<{ width?: number; height?: number }> {
+export async function getImageDimensions(filePath: string, mimeType: string): Promise<{ width: number; height: number }> {
+    const absFilePath = path.resolve(filePath);
+    console.log(`[Dimensions] 📏 Getting dimensions for: ${absFilePath} (${mimeType})`);
+
     try {
         if (mimeType.startsWith('image/')) {
-            const metadata = await sharp(filePath).metadata();
-            return { width: metadata.width, height: metadata.height };
+            const metadata = await sharp(absFilePath).metadata();
+            const result = { width: metadata.width || 0, height: metadata.height || 0 };
+            console.log(`[Dimensions] ✅ Image dimensions: ${result.width}x${result.height}`);
+            return result;
         } else if (mimeType.startsWith('video/')) {
             return new Promise((resolve) => {
-                ffmpeg.ffprobe(filePath, (err, metadata) => {
+                ffmpeg.ffprobe(absFilePath, (err, metadata) => {
                     if (err) {
-                        console.error('ffprobe failed:', err);
-                        resolve({});
-                        return;
-                    }
-                    // Find video stream
-                    const stream = metadata.streams.find(s => s.codec_type === 'video');
-                    if (stream) {
-                        // Some videos have rotation metadata, might need to swap width/height? 
-                        // For now keep simple
-                        resolve({ width: stream.width, height: stream.height });
+                        console.error(`[Dimensions] ❌ Probe failed:`, err.message);
+                        resolve({ width: 0, height: 0 });
                     } else {
-                        resolve({});
+                        const stream = metadata.streams.find(s => s.width && s.height);
+                        const result = {
+                            width: stream?.width || 0,
+                            height: stream?.height || 0
+                        };
+                        console.log(`[Dimensions] ✅ Video dimensions: ${result.width}x${result.height}`);
+                        resolve(result);
                     }
                 });
             });
@@ -93,5 +97,5 @@ export async function getImageDimensions(filePath: string, mimeType: string): Pr
     } catch (error) {
         console.error('Get dimensions failed:', error);
     }
-    return {};
+    return { width: 0, height: 0 };
 }

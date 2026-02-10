@@ -192,8 +192,11 @@ router.post('/complete', async (req: Request, res: Response) => {
         // 合并分块
         const ext = path.extname(session.filename);
         const storedName = `${uuidv4()}${ext}`;
-        const finalPath = path.join(UPLOAD_DIR, storedName);
+        const finalPath = path.resolve(path.join(UPLOAD_DIR, storedName));
         const writeStream = fs.createWriteStream(finalPath);
+
+        console.log(`[ChunkedComplete] 🧩 Merging ${session.totalChunks} chunks for: ${session.filename}`);
+        console.log(`[ChunkedComplete] 🏠 Final temp path: ${finalPath}`);
 
         for (let i = 0; i < session.totalChunks; i++) {
             const chunkPath = path.join(CHUNK_DIR, uploadId, `chunk_${i}`);
@@ -219,16 +222,16 @@ router.post('/complete', async (req: Request, res: Response) => {
 
         if (session.mimeType.startsWith('image/') || session.mimeType.startsWith('video/')) {
             try {
+                console.log(`[ChunkedComplete] 🖼️  MIME: ${session.mimeType}, starting generation...`);
                 const thumbResult = await generateThumbnail(finalPath, storedName, session.mimeType);
                 if (thumbResult) {
                     thumbnailPath = path.basename(thumbResult);
+                    console.log(`[ChunkedComplete] ✨ Thumbnail generated: ${thumbnailPath}`);
                     const dims = await getImageDimensions(finalPath, session.mimeType);
                     width = dims.width;
                     height = dims.height;
-                } else if (session.mimeType.startsWith('image/')) {
-                    const dims = await getImageDimensions(finalPath, session.mimeType);
-                    width = dims.width;
-                    height = dims.height;
+                } else {
+                    console.log(`[ChunkedComplete] ⚠️  No thumbnail generated for: ${session.mimeType}`);
                 }
             } catch (error) {
                 console.error('生成缩略图失败:', error);
