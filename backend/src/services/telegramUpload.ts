@@ -11,6 +11,73 @@ import { formatBytes, getTypeEmoji, getFileType, getMimeTypeFromFilename, saniti
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || './data/uploads';
 
+// 下载任务接口
+interface DownloadTask {
+    id: string;
+    execute: () => Promise<void>;
+    fileName: string;
+}
+
+// 下载队列管理类
+class DownloadQueue {
+    private queue: DownloadTask[] = [];
+    private activeCount = 0;
+    private maxConcurrent = 2; // 用户要求并发限制为 2
+
+    async add(fileName: string, execute: () => Promise<void>): Promise<void> {
+        const id = uuidv4();
+        return new Promise((resolve, reject) => {
+            const task: DownloadTask = {
+                id,
+                fileName,
+                execute: async () => {
+                    try {
+                        await execute();
+                        resolve();
+                    } catch (error) {
+                        reject(error);
+                    } finally {
+                        this.activeCount--;
+                        this.processNext();
+                    }
+                }
+            };
+
+            this.queue.push(task);
+            console.log(`[Queue] 📥 Task added: ${fileName}. Queue size: ${this.queue.length}`);
+            this.processNext();
+        });
+    }
+
+    private processNext() {
+        if (this.activeCount >= this.maxConcurrent || this.queue.length === 0) {
+            return;
+        }
+
+        const task = this.queue.shift();
+        if (task) {
+            this.activeCount++;
+            console.log(`[Queue] 🚀 Processing task: ${task.fileName}. Active: ${this.activeCount}, Pending: ${this.queue.length}`);
+            task.execute();
+        }
+    }
+
+    getStats() {
+        return {
+            active: this.activeCount,
+            pending: this.queue.length,
+            total: this.activeCount + this.queue.length
+        };
+    }
+}
+
+const downloadQueue = new DownloadQueue();
+
+// 导出获取队列统计信息的函数
+export function getDownloadQueueStats() {
+    return downloadQueue.getStats();
+}
+
 // 多文件上传队列管理
 interface FileUploadItem {
     fileName: string;
@@ -348,46 +415,52 @@ async function processFileUpload(client: TelegramClient, file: FileUploadItem, q
         }
     };
 
-    // 第一次尝试
-    const firstAttemptSuccess = await attemptUpload();
+    // 将下载和保存逻辑封装为队列任务
+    const queueTask = async () => {
+        // 第一次尝试
+        const firstAttemptSuccess = await attemptUpload();
 
-    if (!firstAttemptSuccess && !file.retried) {
-        // 自动重试一次
-        console.log(`🤖 文件 ${file.fileName} 上传失败，正在清理垃圾缓存并重试...`);
+        if (!firstAttemptSuccess && !file.retried) {
+            // 自动重试一次
+            console.log(`🤖 文件 ${file.fileName} 上传失败，正在清理垃圾缓存并重试...`);
 
-        // 清理垃圾缓存
-        if (file.garbageInfo?.localPath && fs.existsSync(file.garbageInfo.localPath)) {
-            try {
-                fs.unlinkSync(file.garbageInfo.localPath);
-                console.log(`🤖 已清理本地临时文件: ${file.garbageInfo.localPath}`);
-            } catch (e) {
-                console.error('🤖 清理本地临时文件失败:', e);
+            // 清理垃圾缓存
+            if (file.garbageInfo?.localPath && fs.existsSync(file.garbageInfo.localPath)) {
+                try {
+                    fs.unlinkSync(file.garbageInfo.localPath);
+                    console.log(`🤖 已清理本地临时文件: ${file.garbageInfo.localPath}`);
+                } catch (e) {
+                    console.error('🤖 清理本地临时文件失败:', e);
+                }
             }
-        }
-        file.garbageInfo = undefined;
-        file.retried = true;
-        file.status = 'uploading';
-        file.error = undefined;
+            file.garbageInfo = undefined;
+            file.retried = true;
+            file.status = 'uploading';
+            file.error = undefined;
 
-        // 更新状态消息显示"正在重试"
-        if (queue && queue.statusMsgId && queue.chatId) {
-            try {
-                await client.editMessage(queue.chatId as Api.TypeEntityLike, {
-                    message: queue.statusMsgId,
-                    text: generateBatchStatusMessage(queue).replace(file.fileName, `${file.fileName} (重试中...)`),
-                });
-            } catch (e) { /* ignore */ }
-        }
+            // 更新状态消息显示"正在重试"
+            if (queue && queue.statusMsgId && queue.chatId) {
+                try {
+                    await client.editMessage(queue.chatId as Api.TypeEntityLike, {
+                        message: queue.statusMsgId,
+                        text: generateBatchStatusMessage(queue).replace(file.fileName, `${file.fileName} (重试中...)`),
+                    });
+                } catch (e) { /* ignore */ }
+            }
 
-        // 重试
-        const retrySuccess = await attemptUpload();
-        if (!retrySuccess) {
+            // 重试
+            const retrySuccess = await attemptUpload();
+            if (!retrySuccess) {
+                file.status = 'failed';
+                console.log(`🤖 文件 ${file.fileName} 重试仍然失败`);
+            }
+        } else if (!firstAttemptSuccess) {
             file.status = 'failed';
-            console.log(`🤖 文件 ${file.fileName} 重试仍然失败`);
         }
-    } else if (!firstAttemptSuccess) {
-        file.status = 'failed';
-    }
+    };
+
+    // 加入队列并等待执行
+    await downloadQueue.add(file.fileName, queueTask);
 }
 
 // 处理批量文件上传队列
@@ -629,6 +702,19 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
             console.log('🤖 无法发送进度消息，文件将静默下载');
         }
 
+        // 显示排队状态（如果前面有任务）
+        const stats = downloadQueue.getStats();
+        if (stats.active >= 2 || stats.pending > 0) {
+            try {
+                if (statusMsg) {
+                    await client.editMessage(message.chatId!, {
+                        message: statusMsg.id,
+                        text: `⏳ 已加入下载队列 (当前排队: ${stats.pending})\n\n📄 文件: ${finalFileName}\n💡 请耐心等待，Bot 将按顺序处理任务。`
+                    });
+                }
+            } catch (e) { /* ignore */ }
+        }
+
         let lastUpdateTime = 0;
         const updateInterval = 1000;
 
@@ -727,77 +813,83 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
             }
         };
 
-        // 第一次尝试
-        let success = await attemptSingleUpload();
+        // 将上传过程封装到队列任务中
+        const singleUploadTask = async () => {
+            // 第一次尝试
+            let success = await attemptSingleUpload();
 
-        // 如果失败，清理垃圾缓存并重试
-        if (!success && retryCount < maxRetries) {
-            retryCount++;
-            console.log(`🤖 单文件 ${finalFileName} 上传失败，正在清理并重试 (${retryCount}/${maxRetries})...`);
+            // 如果失败，清理垃圾缓存并重试
+            if (!success && retryCount < maxRetries) {
+                retryCount++;
+                console.log(`🤖 单文件 ${finalFileName} 上传失败，正在清理并重试 (${retryCount}/${maxRetries})...`);
 
-            if (lastLocalPath && fs.existsSync(lastLocalPath)) {
-                try {
-                    fs.unlinkSync(lastLocalPath);
-                    console.log(`🤖 已清理本地临时文件: ${lastLocalPath}`);
-                } catch (e) {
-                    console.error('🤖 清理本地临时文件失败:', e);
+                if (lastLocalPath && fs.existsSync(lastLocalPath)) {
+                    try {
+                        fs.unlinkSync(lastLocalPath);
+                        console.log(`🤖 已清理本地临时文件: ${lastLocalPath}`);
+                    } catch (e) {
+                        console.error('🤖 清理本地临时文件失败:', e);
+                    }
                 }
-            }
-            lastLocalPath = undefined;
+                lastLocalPath = undefined;
 
-            if (statusMsg) {
-                try {
+                if (statusMsg) {
+                    try {
+                        await client.editMessage(message.chatId!, {
+                            message: statusMsg.id,
+                            text: `🔄 上传失败，正在重试...\n${generateProgressBar(0, 1)}\n\n${typeEmoji} ${finalFileName}`,
+                        });
+                    } catch (e) { /* ignore */ }
+                }
+
+                success = await attemptSingleUpload();
+            }
+
+            // 最终失败处理
+            if (!success) {
+                if (statusMsg) {
                     await client.editMessage(message.chatId!, {
                         message: statusMsg.id,
-                        text: `🔄 上传失败，正在重试...\n${generateProgressBar(0, 1)}\n\n${typeEmoji} ${finalFileName}`,
-                    });
-                } catch (e) { /* ignore */ }
-            }
+                        text: `❌ 上传失败: ${finalFileName}\n原因: ${lastError || '未知错误'}`
+                    }).catch(() => { });
+                }
 
-            success = await attemptSingleUpload();
-        }
+                // 如果有垃圾缓存，发送清理按钮
+                if (lastLocalPath && fs.existsSync(lastLocalPath)) {
+                    try {
+                        const stats = fs.statSync(lastLocalPath);
+                        const garbageSize = formatBytes(stats.size);
+                        const cleanupId = `cleanup_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-        // 最终失败处理
-        if (!success) {
-            if (statusMsg) {
-                await client.editMessage(message.chatId!, {
-                    message: statusMsg.id,
-                    text: `❌ 上传失败: ${finalFileName}\n原因: ${lastError || '未知错误'}`
-                }).catch(() => { });
-            }
+                        pendingCleanups.set(cleanupId, {
+                            localPath: lastLocalPath,
+                            fileName: finalFileName,
+                            size: stats.size,
+                        });
 
-            // 如果有垃圾缓存，发送清理按钮
-            if (lastLocalPath && fs.existsSync(lastLocalPath)) {
-                try {
-                    const stats = fs.statSync(lastLocalPath);
-                    const garbageSize = formatBytes(stats.size);
-                    const cleanupId = `cleanup_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-                    pendingCleanups.set(cleanupId, {
-                        localPath: lastLocalPath,
-                        fileName: finalFileName,
-                        size: stats.size,
-                    });
-
-                    await client.sendMessage(message.chatId!, {
-                        message: `⚠️ 文件 **${finalFileName}** 上传失败\n服务器产生了 ${garbageSize} 垃圾缓存\n点击下方按钮清理：`,
-                        buttons: new Api.ReplyInlineMarkup({
-                            rows: [
-                                new Api.KeyboardButtonRow({
-                                    buttons: [
-                                        new Api.KeyboardButtonCallback({
-                                            text: `🗑️ 清理缓存 (${garbageSize})`,
-                                            data: Buffer.from(cleanupId)
-                                        })
-                                    ]
-                                })
-                            ]
-                        })
-                    });
-                } catch (e) {
-                    console.error('🤖 发送清理按钮消息失败:', e);
+                        await client.sendMessage(message.chatId!, {
+                            message: `⚠️ 文件 **${finalFileName}** 上传失败\n服务器产生了 ${garbageSize} 垃圾缓存\n点击下方按钮清理：`,
+                            buttons: new Api.ReplyInlineMarkup({
+                                rows: [
+                                    new Api.KeyboardButtonRow({
+                                        buttons: [
+                                            new Api.KeyboardButtonCallback({
+                                                text: `🗑️ 清理缓存 (${garbageSize})`,
+                                                data: Buffer.from(cleanupId)
+                                            })
+                                        ]
+                                    })
+                                ]
+                            })
+                        });
+                    } catch (e) {
+                        console.error('🤖 发送清理按钮消息失败:', e);
+                    }
                 }
             }
-        }
+        };
+
+        // 加入队列执行
+        await downloadQueue.add(finalFileName, singleUploadTask);
     }
 }

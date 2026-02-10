@@ -5,6 +5,7 @@ import os from 'os';
 import fs from 'fs';
 import { formatBytes, getTypeEmoji } from '../utils/telegramUtils.js';
 import { authenticatedUsers, passwordInputState, isAuthenticated } from './telegramState.js';
+import { getDownloadQueueStats } from './telegramUpload.js';
 
 // ESM compatibility
 const checkDiskSpace = (checkDiskSpaceModule as any).default || checkDiskSpaceModule;
@@ -16,10 +17,6 @@ export async function handleStart(message: Api.Message, senderId: number): Promi
         });
     } else {
         passwordInputState.set(senderId, { password: '' });
-        // The calling function will need to handle sending the keyboard as it requires the `generatePasswordKeyboard` function 
-        // which might be better placed in utils or passed here.
-        // For simplicity, we'll return a specific signal or just let the main loop handle the keyboard if this returns false/special value?
-        // Actually, let's move `generatePasswordKeyboard` to utils/telegramUtils.ts or just export it.
     }
 }
 
@@ -39,6 +36,13 @@ export async function handleStorage(message: Api.Message): Promise<void> {
         const fileCount = parseInt(foomclousStats.file_count);
         const usedPercent = Math.round(((diskSpace.size - diskSpace.free) / diskSpace.size) * 100);
 
+        const queueStats = getDownloadQueueStats();
+        const queueInfo = queueStats.total > 0
+            ? `\n\n**当前下载队列:**\n` +
+            `├ 🔄 正在处理: ${queueStats.active}\n` +
+            `└ ⏳ 等待中: ${queueStats.pending}`
+            : '';
+
         const reply = `📊 **存储空间统计**\n\n` +
             `**服务器磁盘:**\n` +
             `├ 📦 总容量: ${formatBytes(diskSpace.size)}\n` +
@@ -46,7 +50,8 @@ export async function handleStorage(message: Api.Message): Promise<void> {
             `└ 📂 可用: ${formatBytes(diskSpace.free)}\n\n` +
             `**FoomClous 存储:**\n` +
             `├ 📁 文件数量: ${fileCount}\n` +
-            `└ 💾 占用空间: ${formatBytes(totalSize)}`;
+            `└ 💾 占用空间: ${formatBytes(totalSize)}` +
+            queueInfo;
 
         await message.reply({ message: reply });
     } catch (error) {
