@@ -153,7 +153,7 @@ echo -n "your_password" | sha256sum | awk '{print $1}'
 要获取最新功能的代码并更新服务器，请在项目目录下运行：
 ```bash
 # 进入项目目录
-cd /opt/foomclous
+cd /root/foomclous
 
 # 拉取最新代码
 git pull origin main
@@ -172,8 +172,8 @@ docker system prune -f
 
 ## ✨ 功能特性
 
-*   📦 **极速上传**: 支持大文件切片、断点续传。
-*   🖼️ **智能预览**: 图片自动缩略图（WebP）、视频实时流播放。
+*   📦 **极速上传**: 支持大文件切片、断点续传、**多文件上传时自动提示创建文件夹**。
+*   🖼️ **智能预览**: 图片与视频自动生成缩略图（WebP）、视频实时流播放。
 *   🤖 **Bot 友好**: 提供完善的外部 API，轻松集成 Telegram 等机器人。
 *   🌍 **多语言**: 内置 i18n 系统，支持中英文切换。
 *   🐳 **全容器化**: 一键水平扩展，部署极其简单。
@@ -194,4 +194,4 @@ FoomClous/
 
 ## 📄 开源协议
 
-基于 [MIT License](LICENSE) 开源。欢迎提交 Pull Request 贡献代码！
+基于 [MIT License](LICENSE) 开源。
