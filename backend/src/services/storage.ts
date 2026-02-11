@@ -686,20 +686,36 @@ export class StorageManager {
         this.providers.delete(key);
     }
 
-    // 添加新的 OneDrive 账户
+    // 添加新的 OneDrive 账户 (如果 Client ID 已存在则更新现有记录)
     async addOneDriveAccount(name: string, clientId: string, clientSecret: string, refreshToken: string, tenantId: string = 'common') {
-        const res = await query(
-            `INSERT INTO storage_accounts (type, name, config, is_active) 
-             VALUES ($1, $2, $3, $4) RETURNING id`,
-            ['onedrive', name, JSON.stringify({ clientId, clientSecret, refreshToken, tenantId }), false]
-        );
+        const config = JSON.stringify({ clientId, clientSecret, refreshToken, tenantId });
 
-        const newId = res.rows[0].id;
-        // 初始化 Provider
-        const oneDrive = new OneDriveStorageProvider(newId, clientId, clientSecret, refreshToken, tenantId);
-        this.providers.set(`onedrive:${newId}`, oneDrive);
+        // 检查是否已存在相同 Client ID 的账户
+        const existing = await query('SELECT id FROM storage_accounts WHERE type = $1 AND config->>\'clientId\' = $2', ['onedrive', clientId]);
 
-        return newId;
+        let targetId: string;
+        if (existing.rows.length > 0) {
+            targetId = existing.rows[0].id;
+            console.log(`[StorageManager] Updating existing OneDrive account: ${targetId} (ClientID: ${clientId.substring(0, 8)}...)`);
+            await query(
+                'UPDATE storage_accounts SET name = $1, config = $2, updated_at = NOW() WHERE id = $3',
+                [name, config, targetId]
+            );
+        } else {
+            const res = await query(
+                `INSERT INTO storage_accounts (type, name, config, is_active) 
+                 VALUES ($1, $2, $3, $4) RETURNING id`,
+                ['onedrive', name, config, false]
+            );
+            targetId = res.rows[0].id;
+            console.log(`[StorageManager] Added new OneDrive account: ${targetId}`);
+        }
+
+        // 初始化/更新内存中的 Provider
+        const oneDrive = new OneDriveStorageProvider(targetId, clientId, clientSecret, refreshToken, tenantId);
+        this.providers.set(`onedrive:${targetId}`, oneDrive);
+
+        return targetId;
     }
 
     // 切换激活账户
@@ -717,10 +733,13 @@ export class StorageManager {
     }
 
     async updateOneDriveConfig(clientId: string, clientSecret: string, refreshToken: string, tenantId: string = 'common', name?: string) {
-        // 同步更新 system_settings 以便 OAuth 回调获取最新的 Client ID/Secret
+        // 同步更新 system_settings 以便 OAuth 回调获取最新的 Client ID/Secret 以及作为全局回退
         await StorageManager.updateSetting('onedrive_client_id', clientId);
         await StorageManager.updateSetting('onedrive_client_secret', clientSecret);
         await StorageManager.updateSetting('onedrive_tenant_id', tenantId);
+        if (refreshToken !== 'pending') {
+            await StorageManager.updateSetting('onedrive_refresh_token', refreshToken);
+        }
 
         // 如果提供了 name，也暂时存到 system_settings，以便 OAuth 回调时使用
         if (name) {
