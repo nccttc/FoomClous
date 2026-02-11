@@ -29,6 +29,12 @@ export async function generateThumbnail(filePath: string, storedName: string, mi
         return null;
     }
 
+    // 对于 GIF 文件，不生成静态缩略图，以便在前端利用原始文件实现动图预览
+    if (mimeType === 'image/gif') {
+        console.log(`[Thumbnail] ⏩ Skipping GIF to preserve animation`);
+        return null;
+    }
+
     try {
         if (mimeType.startsWith('image/')) {
             console.log(`[Thumbnail] 🖼️  Processing image with Sharp...`);

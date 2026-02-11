@@ -42,7 +42,9 @@ export const FileCard = ({
     };
 
     // 使用真实的缩略图或预览 URL（已包含签名）
-    const thumbnailSrc = file.thumbnailUrl || (file.type === 'image' ? file.previewUrl : undefined);
+    // 对于 GIF 动图，强制使用预览 URL 以便能够自动播放
+    const isGif = file.name.toLowerCase().endsWith('.gif');
+    const thumbnailSrc = isGif ? file.previewUrl : (file.thumbnailUrl || (file.type === 'image' ? file.previewUrl : undefined));
 
     // 存储图标组件
     const SourceIcon = file.source === 'onedrive' ? Cloud : HardDrive;
