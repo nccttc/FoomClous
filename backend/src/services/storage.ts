@@ -153,18 +153,21 @@ export class OneDriveStorageProvider implements IStorageProvider {
         for (let attempt = 1; attempt <= 3; attempt++) {
             try {
                 const params = new URLSearchParams();
-                params.append('client_id', this.clientId);
+                params.append('client_id', this.clientId.trim());
                 params.append('scope', 'Files.ReadWrite.All User.Read offline_access');
 
-                // 只有在 clientSecret 存在时才添加 (支持 confidential 和 public client)
-                if (this.clientSecret) {
-                    params.append('client_secret', this.clientSecret);
+                // 只有在 clientSecret 存在且非空时才添加
+                if (this.clientSecret && this.clientSecret.trim()) {
+                    params.append('client_secret', this.clientSecret.trim());
                 }
 
-                params.append('refresh_token', this.refreshToken);
+                params.append('refresh_token', this.refreshToken.trim());
                 params.append('grant_type', 'refresh_token');
 
-                const endpoint = `https://login.microsoftonline.com/${this.tenantId}/oauth2/v2.0/token`;
+                const endpoint = `https://login.microsoftonline.com/${this.tenantId.trim()}/oauth2/v2.0/token`;
+
+                console.log(`[OneDrive] Refreshing token. ClientID: ${this.clientId}, HasSecret: ${!!this.clientSecret}, Scope: ${params.get('scope')}`);
+                // console.log('Params:', params.toString()); // Uncomment for deep debug (sensitive!)
 
                 const response = await axios.post(
                     endpoint,
