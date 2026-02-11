@@ -16,7 +16,21 @@ const FileIcon = ({ type }: { type: FileData["type"] }) => {
     }
 };
 
-export const FileCard = ({ file, onPreview, onDelete }: { file: FileData; onPreview?: () => void; onDelete?: () => void }) => {
+export const FileCard = ({
+    file,
+    onPreview,
+    onDelete,
+    isSelectionMode = false,
+    isSelected = false,
+    onSelect
+}: {
+    file: FileData;
+    onPreview?: () => void;
+    onDelete?: () => void;
+    isSelectionMode?: boolean;
+    isSelected?: boolean;
+    onSelect?: (id: string) => void;
+}) => {
     const handleDownload = async (e: React.MouseEvent) => {
         e.stopPropagation();
         try {
@@ -34,12 +48,20 @@ export const FileCard = ({ file, onPreview, onDelete }: { file: FileData; onPrev
     const SourceIcon = file.source === 'onedrive' ? Cloud : HardDrive;
     const sourceLabel = file.source === 'onedrive' ? 'OneDrive' : 'Local';
 
+    const handleCardClick = () => {
+        if (isSelectionMode) {
+            onSelect?.(file.id);
+        } else {
+            onPreview?.();
+        }
+    };
+
     return (
         <motion.div
             layout
-            whileHover={{ y: -4, transition: { duration: 0.2 } }}
-            className="group relative flex flex-col rounded-2xl border border-border/50 bg-card overflow-hidden shadow-sm transition-all hover:shadow-lg hover:border-border cursor-pointer"
-            onClick={onPreview}
+            whileHover={{ y: isSelectionMode ? 0 : -4, transition: { duration: 0.2 } }}
+            className={`group relative flex flex-col rounded-2xl border ${isSelected ? 'border-primary ring-2 ring-primary/20 bg-primary/5' : 'border-border/50 bg-card'} overflow-hidden shadow-sm transition-all ${!isSelectionMode ? 'hover:shadow-lg hover:border-border cursor-pointer' : 'cursor-default'}`}
+            onClick={handleCardClick}
         >
             {/* 图片区域 - 使用 4:3 比例 */}
             <div className="relative aspect-[4/3] w-full overflow-hidden bg-gradient-to-br from-muted/30 to-muted/60 flex items-center justify-center">
@@ -59,54 +81,79 @@ export const FileCard = ({ file, onPreview, onDelete }: { file: FileData; onPrev
                     </div>
                 )}
 
+                {/* Selection Checkbox */}
+                {isSelectionMode && (
+                    <div
+                        className="absolute bottom-2 right-2 z-20"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div
+                            className={`h-6 w-6 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${isSelected ? 'bg-primary border-primary' : 'bg-black/20 border-white/50 backdrop-blur-sm'}`}
+                            onClick={() => onSelect?.(file.id)}
+                        >
+                            {isSelected && (
+                                <motion.div
+                                    initial={{ scale: 0 }}
+                                    animate={{ scale: 1 }}
+                                    className="h-2.5 w-2.5 bg-white rounded-full"
+                                />
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {/* Storage Source Indicator */}
-                <div className="absolute top-2 right-2 bg-black/40 backdrop-blur-md px-2 py-1 rounded-full flex items-center gap-1.5 text-[10px] font-medium text-white/90 border border-white/10 shadow-sm z-10">
-                    <SourceIcon className="h-3 w-3" />
-                    <span>{sourceLabel}</span>
-                </div>
+                {!isSelectionMode && (
+                    <div className="absolute top-2 right-2 bg-black/40 backdrop-blur-md px-2 py-1 rounded-full flex items-center gap-1.5 text-[10px] font-medium text-white/90 border border-white/10 shadow-sm z-10">
+                        <SourceIcon className="h-3 w-3" />
+                        <span>{sourceLabel}</span>
+                    </div>
+                )}
 
                 {/* Hover Overlay Actions */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100 flex items-end justify-center pb-4 gap-3">
-                    <Button
-                        size="icon"
-                        variant="secondary"
-                        className="h-9 w-9 rounded-full bg-white/95 hover:bg-white text-gray-700 shadow-lg transition-all hover:scale-110"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onPreview?.();
-                        }}
-                        title="预览"
-                    >
-                        <Eye className="h-4 w-4" />
-                    </Button>
-                    <Button
-                        size="icon"
-                        variant="secondary"
-                        className="h-9 w-9 rounded-full bg-white/95 hover:bg-white text-gray-700 shadow-lg transition-all hover:scale-110"
-                        onClick={handleDownload}
-                        title="下载"
-                    >
-                        <Download className="h-4 w-4" />
-                    </Button>
-                    {onDelete && (
+                {!isSelectionMode && (
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100 flex items-end justify-center pb-4 gap-3">
                         <Button
                             size="icon"
                             variant="secondary"
-                            className="h-9 w-9 rounded-full bg-white/95 hover:bg-red-50 text-red-500 hover:text-red-600 shadow-lg transition-all hover:scale-110"
+                            className="h-9 w-9 rounded-full bg-white/95 hover:bg-white text-gray-700 shadow-lg transition-all hover:scale-110"
                             onClick={(e) => {
                                 e.stopPropagation();
-                                onDelete();
+                                onPreview?.();
                             }}
-                            title="删除"
+                            title="预览"
                         >
-                            <Trash2 className="h-4 w-4" />
+                            <Eye className="h-4 w-4" />
                         </Button>
-                    )}
-                </div>
+                        <Button
+                            size="icon"
+                            variant="secondary"
+                            className="h-9 w-9 rounded-full bg-white/95 hover:bg-white text-gray-700 shadow-lg transition-all hover:scale-110"
+                            onClick={handleDownload}
+                            title="下载"
+                        >
+                            <Download className="h-4 w-4" />
+                        </Button>
+                        {onDelete && (
+                            <Button
+                                size="icon"
+                                variant="secondary"
+                                className="h-9 w-9 rounded-full bg-white/95 hover:bg-red-50 text-red-500 hover:text-red-600 shadow-lg transition-all hover:scale-110"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onDelete();
+                                }}
+                                title="删除"
+                            >
+                                <Trash2 className="h-4 w-4" />
+                            </Button>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* 文件信息 */}
-            <div className="p-3.5">
+            <div className={`p-3.5 ${isSelected ? 'bg-primary/5' : ''}`}>
                 <h3 className="truncate text-sm font-medium leading-tight text-foreground mb-1" title={file.name}>
                     {file.name}
                 </h3>

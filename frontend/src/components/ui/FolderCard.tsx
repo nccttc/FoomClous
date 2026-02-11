@@ -20,7 +20,19 @@ const getFileTypeIcon = (type: FileData["type"]) => {
     }
 };
 
-export const FolderCard = ({ folder, onClick }: { folder: FolderData; onClick: () => void }) => {
+export const FolderCard = ({
+    folder,
+    onClick,
+    isSelectionMode = false,
+    isSelected = false,
+    onSelect
+}: {
+    folder: FolderData;
+    onClick: () => void;
+    isSelectionMode?: boolean;
+    isSelected?: boolean;
+    onSelect?: (name: string) => void;
+}) => {
     // 获取封面缩略图
     const coverFile = folder.coverFile;
     const thumbnailSrc = coverFile?.thumbnailUrl || (coverFile?.type === 'image' ? coverFile?.previewUrl : undefined);
@@ -31,12 +43,20 @@ export const FolderCard = ({ folder, onClick }: { folder: FolderData; onClick: (
         return acc;
     }, {} as Record<string, number>);
 
+    const handleCardClick = () => {
+        if (isSelectionMode) {
+            onSelect?.(folder.name);
+        } else {
+            onClick();
+        }
+    };
+
     return (
         <motion.div
             layout
-            whileHover={{ y: -4, transition: { duration: 0.2 } }}
-            className="group relative flex flex-col rounded-2xl border border-border/50 bg-card overflow-hidden shadow-sm transition-all hover:shadow-lg hover:border-primary/30 cursor-pointer"
-            onClick={onClick}
+            whileHover={{ y: isSelectionMode ? 0 : -4, transition: { duration: 0.2 } }}
+            className={`group relative flex flex-col rounded-2xl border ${isSelected ? 'border-primary ring-2 ring-primary/20 bg-primary/5' : 'border-border/50 bg-card'} overflow-hidden shadow-sm transition-all ${!isSelectionMode ? 'hover:shadow-lg hover:border-primary/30 cursor-pointer' : 'cursor-default'}`}
+            onClick={handleCardClick}
         >
             {/* 封面区域 - 使用 4:3 比例 */}
             <div className="relative aspect-[4/3] w-full overflow-hidden bg-gradient-to-br from-primary/5 to-primary/15 flex items-center justify-center">
@@ -57,6 +77,27 @@ export const FolderCard = ({ folder, onClick }: { folder: FolderData; onClick: (
                     </div>
                 )}
 
+                {/* Selection Checkbox */}
+                {isSelectionMode && (
+                    <div
+                        className="absolute bottom-2.5 right-2.5 z-20"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div
+                            className={`h-6 w-6 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${isSelected ? 'bg-primary border-primary' : 'bg-black/20 border-white/50 backdrop-blur-sm'}`}
+                            onClick={() => onSelect?.(folder.name)}
+                        >
+                            {isSelected && (
+                                <motion.div
+                                    initial={{ scale: 0 }}
+                                    animate={{ scale: 1 }}
+                                    className="h-2.5 w-2.5 bg-white rounded-full"
+                                />
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {/* 左上角：文件夹图标徽章 */}
                 <div className="absolute top-2.5 left-2.5 bg-black/60 backdrop-blur-md rounded-full px-2.5 py-1 flex items-center gap-1.5 shadow-sm border border-white/10 transition-transform group-hover:scale-105">
                     <Folder className="h-3.5 w-3.5 text-white/90" />
@@ -64,22 +105,24 @@ export const FolderCard = ({ folder, onClick }: { folder: FolderData; onClick: (
                 </div>
 
                 {/* 右下角：文件类型指示器 */}
-                <div className="absolute bottom-2.5 right-2.5 flex gap-1.5">
-                    {Object.entries(typeCounts).map(([type, count]) => (
-                        <div
-                            key={type}
-                            className="bg-black/60 backdrop-blur-md rounded-full px-2.5 py-1 flex items-center gap-1.5 shadow-sm border border-white/10 transition-transform group-hover:scale-105"
-                            title={`${count} ${type}`}
-                        >
-                            {getFileTypeIcon(type as FileData["type"])}
-                            <span className="text-xs font-medium text-white/90 tabular-nums">{count}</span>
-                        </div>
-                    ))}
-                </div>
+                {!isSelectionMode && (
+                    <div className="absolute bottom-2.5 right-2.5 flex gap-1.5">
+                        {Object.entries(typeCounts).map(([type, count]) => (
+                            <div
+                                key={type}
+                                className="bg-black/60 backdrop-blur-md rounded-full px-2.5 py-1 flex items-center gap-1.5 shadow-sm border border-white/10 transition-transform group-hover:scale-105"
+                                title={`${count} ${type}`}
+                            >
+                                {getFileTypeIcon(type as FileData["type"])}
+                                <span className="text-xs font-medium text-white/90 tabular-nums">{count}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* 文件夹信息 */}
-            <div className="p-3.5">
+            <div className={`p-3.5 ${isSelected ? 'bg-primary/5' : ''}`}>
                 <h3 className="truncate text-sm font-semibold leading-tight text-foreground mb-1" title={folder.name}>
                     {folder.name}
                 </h3>

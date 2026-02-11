@@ -244,6 +244,18 @@ class FileAPI {
         return response.json();
     }
 
+    // 批量删除
+    async batchDelete(fileIds: string[], folderNames: string[]): Promise<{ success: boolean; message: string }> {
+        const response = await fetch(`${API_BASE}/api/files/batch-delete`, {
+            method: 'POST',
+            headers: getHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ fileIds, folderNames }),
+        });
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        if (!response.ok) throw new Error('批量删除失败');
+        return response.json();
+    }
+
     // 获取下载 URL (直接链接或签名链接)
     async getDownloadLink(id: string): Promise<string> {
         const response = await fetch(`${API_BASE}/api/files/${id}/download-url`, {

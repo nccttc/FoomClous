@@ -4,9 +4,10 @@ import { Button } from "./components/ui/Button";
 import { FileCard } from "./components/ui/FileCard";
 import { FolderCard, type FolderData } from "./components/ui/FolderCard";
 import { UploadZone } from "./components/ui/UploadZone";
-import { Search, RefreshCw, ArrowLeft, ChevronDown, ChevronRight } from "lucide-react";
+import { Search, RefreshCw, ArrowLeft, ChevronDown, ChevronRight, CheckSquare } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { PreviewModal } from "./components/ui/PreviewModal";
+import { BulkActionToolbar } from "./components/ui/BulkActionToolbar";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "./components/ui/EmptyState";
 import { SettingsPage } from "./components/pages/SettingsPage";
@@ -52,6 +53,11 @@ function App() {
     key: 'date',
     direction: 'desc'
   });
+
+  // 多选状态
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
+  const [selectedFolderNames, setSelectedFolderNames] = useState<string[]>([]);
 
   // 响应式列数监听
   const [columns, setColumns] = useState(2);
@@ -267,6 +273,45 @@ function App() {
     }
   };
 
+  const handleBatchDelete = async () => {
+    if (selectedFileIds.length === 0 && selectedFolderNames.length === 0) return;
+
+    // 简单确认
+    if (!confirm(`确定要删除选中的 ${selectedFileIds.length + selectedFolderNames.length} 个项目吗？`)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await fileApi.batchDelete(selectedFileIds, selectedFolderNames);
+      setIsSelectionMode(false);
+      setSelectedFileIds([]);
+      setSelectedFolderNames([]);
+      await Promise.all([loadFiles(), loadStorageStats()]);
+    } catch (error: any) {
+      if (error.message === 'UNAUTHORIZED') {
+        authService.clearToken();
+        setIsAuthenticated(false);
+      } else {
+        console.error('批量删除失败:', error);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleFileSelection = (id: string) => {
+    setSelectedFileIds(prev =>
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const toggleFolderSelection = (name: string) => {
+    setSelectedFolderNames(prev =>
+      prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]
+    );
+  };
+
   const filteredFiles = useMemo(() => {
     return files.filter(file => {
       const matchesCategory =
@@ -413,6 +458,21 @@ function App() {
                   <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 </Button>
 
+                {/* 多选切换按钮 */}
+                <Button
+                  variant={isSelectionMode ? "secondary" : "ghost"}
+                  size="sm"
+                  className="h-8 px-3 text-xs flex items-center gap-2"
+                  onClick={() => {
+                    setIsSelectionMode(!isSelectionMode);
+                    setSelectedFileIds([]);
+                    setSelectedFolderNames([]);
+                  }}
+                >
+                  <CheckSquare className="h-4 w-4" />
+                  <span>多选</span>
+                </Button>
+
                 {/* 排序按钮 */}
                 <div className="bg-muted/50 rounded-lg p-1 flex items-center gap-1">
                   <Button
@@ -506,12 +566,20 @@ function App() {
                             file={file}
                             onPreview={() => setSelectedFile(file)}
                             onDelete={() => verifyDelete(file)}
+                            isSelectionMode={isSelectionMode}
+                            isSelected={selectedFileIds.includes(file.id)}
+                            onSelect={toggleFileSelection}
                           />
                         ) : (
                           <div
-                            className="flex items-center gap-4 p-3 rounded-xl border border-border bg-card shadow-sm cursor-pointer group hover:bg-muted/50 transition-colors"
-                            onClick={() => setSelectedFile(file)}
+                            className={`flex items-center gap-4 p-3 rounded-xl border ${selectedFileIds.includes(file.id) ? 'border-primary bg-primary/5' : 'border-border bg-card'} shadow-sm cursor-pointer group hover:bg-muted/50 transition-colors`}
+                            onClick={() => isSelectionMode ? toggleFileSelection(file.id) : setSelectedFile(file)}
                           >
+                            {isSelectionMode && (
+                              <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center ${selectedFileIds.includes(file.id) ? 'bg-primary border-primary' : 'border-muted-foreground/30'}`}>
+                                {selectedFileIds.includes(file.id) && <div className="h-2 w-2 bg-white rounded-full" />}
+                              </div>
+                            )}
                             <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground uppercase tracking-wider group-hover:bg-background transition-colors">
                               {file.type.slice(0, 3)}
                             </div>
@@ -570,6 +638,9 @@ function App() {
                               <FolderCard
                                 folder={folder}
                                 onClick={() => setCurrentFolder(folder.name)}
+                                isSelectionMode={isSelectionMode}
+                                isSelected={selectedFolderNames.includes(folder.name)}
+                                onSelect={toggleFolderSelection}
                               />
                             </motion.div>
                           ))}
@@ -601,12 +672,20 @@ function App() {
                                   file={file}
                                   onPreview={() => setSelectedFile(file)}
                                   onDelete={() => verifyDelete(file)}
+                                  isSelectionMode={isSelectionMode}
+                                  isSelected={selectedFileIds.includes(file.id)}
+                                  onSelect={toggleFileSelection}
                                 />
                               ) : (
                                 <div
-                                  className="flex items-center gap-4 p-3 rounded-xl border border-border bg-card shadow-sm cursor-pointer group hover:bg-muted/50 transition-colors"
-                                  onClick={() => setSelectedFile(file)}
+                                  className={`flex items-center gap-4 p-3 rounded-xl border ${selectedFileIds.includes(file.id) ? 'border-primary bg-primary/5' : 'border-border bg-card'} shadow-sm cursor-pointer group hover:bg-muted/50 transition-colors`}
+                                  onClick={() => isSelectionMode ? toggleFileSelection(file.id) : setSelectedFile(file)}
                                 >
+                                  {isSelectionMode && (
+                                    <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center ${selectedFileIds.includes(file.id) ? 'bg-primary border-primary' : 'border-muted-foreground/30'}`}>
+                                      {selectedFileIds.includes(file.id) && <div className="h-2 w-2 bg-white rounded-full" />}
+                                    </div>
+                                  )}
                                   <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground uppercase tracking-wider group-hover:bg-background transition-colors">
                                     {file.type.slice(0, 3)}
                                   </div>
@@ -655,6 +734,18 @@ function App() {
         onClose={() => setIsFolderModalOpen(false)}
         onConfirm={(folderName) => startUpload(pendingFiles, folderName)}
         onCancel={() => startUpload(pendingFiles)}
+      />
+
+      <BulkActionToolbar
+        isVisible={isSelectionMode}
+        selectedFilesCount={selectedFileIds.length}
+        selectedFoldersCount={selectedFolderNames.length}
+        onCancel={() => {
+          setIsSelectionMode(false);
+          setSelectedFileIds([]);
+          setSelectedFolderNames([]);
+        }}
+        onDelete={handleBatchDelete}
       />
     </AppLayout >
   );

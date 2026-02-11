@@ -317,6 +317,78 @@ router.delete('/:id', async (req: Request, res: Response) => {
     }
 });
 
+// 批量删除文件和文件夹
+router.post('/batch-delete', async (req: Request, res: Response) => {
+    try {
+        const { fileIds = [], folderNames = [] } = req.body;
+
+        if (!Array.isArray(fileIds) || !Array.isArray(folderNames)) {
+            return res.status(400).json({ error: '参数格式错误' });
+        }
+
+        if (fileIds.length === 0 && folderNames.length === 0) {
+            return res.status(400).json({ error: '请提供要删除的文件或文件夹' });
+        }
+
+        // 1. 获取所有待删除的文件记录
+        let filesToDelete: any[] = [];
+
+        if (fileIds.length > 0) {
+            const result = await query('SELECT * FROM files WHERE id = ANY($1)', [fileIds]);
+            filesToDelete = [...filesToDelete, ...result.rows];
+        }
+
+        if (folderNames.length > 0) {
+            const result = await query('SELECT * FROM files WHERE folder = ANY($1)', [folderNames]);
+            filesToDelete = [...filesToDelete, ...result.rows];
+        }
+
+        // 去重
+        const uniqueFiles = Array.from(new Map(filesToDelete.map(f => [f.id, f])).values());
+
+        if (uniqueFiles.length === 0) {
+            return res.json({ success: true, message: '没有发现待删除的项目' });
+        }
+
+        // 2. 依次物理删除
+        const storagePromises = uniqueFiles.map(async (file) => {
+            try {
+                if (file.source === 'onedrive') {
+                    const { storageManager } = await import('../services/storage.js');
+                    const provider = storageManager.getProvider('onedrive');
+                    await provider.deleteFile(file.path);
+                } else {
+                    const filePath = file.path || path.join(UPLOAD_DIR, file.stored_name);
+                    if (fs.existsSync(filePath)) {
+                        fs.unlinkSync(filePath);
+                    }
+                }
+
+                // 删除缩略图
+                if (file.thumbnail_path) {
+                    const thumbPath = path.join(THUMBNAIL_DIR, path.basename(file.thumbnail_path));
+                    if (fs.existsSync(thumbPath)) {
+                        fs.unlinkSync(thumbPath);
+                    }
+                }
+            } catch (err) {
+                console.error(`删除物理文件失败 (ID: ${file.id}):`, err);
+            }
+        });
+
+        await Promise.all(storagePromises);
+
+        // 3. 从数据库批量删除
+        const idsToDelete = uniqueFiles.map(f => f.id);
+        await query('DELETE FROM files WHERE id = ANY($1)', [idsToDelete]);
+
+        res.json({ success: true, message: `成功删除 ${uniqueFiles.length} 个文件` });
+    } catch (error) {
+        console.error('批量删除失败:', error);
+        res.status(500).json({ error: '批量删除失败' });
+    }
+});
+
 // 辅助函数：格式化文件大小
 function formatFileSize(bytes: number): string {
     if (bytes === 0) return '0 B';
