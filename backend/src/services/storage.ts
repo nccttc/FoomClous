@@ -112,7 +112,7 @@ export class OneDriveStorageProvider implements IStorageProvider {
      * 生成 OAuth 授权 URL
      */
     static generateAuthUrl(clientId: string, tenantId: string = 'common', redirectUri: string): string {
-        const scope = encodeURIComponent('Files.ReadWrite.All User.Read offline_access');
+        const scope = encodeURIComponent('Files.ReadWrite.All offline_access');
         const encodedRedirect = encodeURIComponent(redirectUri);
         return `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?client_id=${clientId}&scope=${scope}&response_type=code&redirect_uri=${encodedRedirect}&response_mode=query`;
     }

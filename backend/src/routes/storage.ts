@@ -202,14 +202,20 @@ router.get('/onedrive/callback', async (req: Request, res: Response) => {
             throw err;
         }
 
-        // 我们还需要获取账户名称（通常是邮箱）
-        const profileRes = await axios.get('https://graph.microsoft.com/v1.0/me', {
-            headers: { 'Authorization': `Bearer ${tokens.access_token}` }
-        });
+        // 尝试获取账户名称（可选，如果缺少 User.Read 权限则跳过）
+        let accountName = 'OneDrive Account';
+        try {
+            const profileRes = await axios.get('https://graph.microsoft.com/v1.0/me', {
+                headers: { 'Authorization': `Bearer ${tokens.access_token}` }
+            });
+            accountName = profileRes.data.mail || profileRes.data.userPrincipalName || 'OneDrive Account';
+        } catch (profileError) {
+            console.log('[OneDrive] Could not fetch user profile (likely User.Read scope missing), using default name.');
+        }
 
-        // 优先使用用户设置的 pending name，否则使用 Graph API 返回的名称
+        // 优先使用用户设置的 pending name
         const pendingName = await storageManager.getSetting('onedrive_pending_name');
-        const accountName = pendingName || profileRes.data.mail || profileRes.data.userPrincipalName || 'OneDrive Account';
+        const finalName = pendingName || accountName;
 
         // 保存刷新令牌并记录
         // 如果是从设置页面的“更新旧配置”来的，逻辑在 updateOneDriveConfig 里处理
@@ -219,7 +225,7 @@ router.get('/onedrive/callback', async (req: Request, res: Response) => {
         // 更新账户名称
         const activeId = storageManager.getActiveAccountId();
         if (activeId) {
-            await query('UPDATE storage_accounts SET name = $1 WHERE id = $2', [accountName, activeId]);
+            await query('UPDATE storage_accounts SET name = $1 WHERE id = $2', [finalName, activeId]);
         }
 
         res.send(`
