@@ -552,8 +552,21 @@ export class StorageManager {
             await this.migrateLegacyConfig();
 
             // 2. 获取当前激活的 Provider 类型 (统一使用 active_storage_provider)
-            const providerRes = await query('SELECT value FROM system_settings WHERE key = $1', ['active_storage_provider']);
-            const providerName = providerRes.rows[0]?.value || 'local';
+            let providerRes = await query('SELECT value FROM system_settings WHERE key = $1', ['active_storage_provider']);
+            let providerName = providerRes.rows[0]?.value || null;
+
+            // 兼容旧版本：如果新 key 不存在，检查旧 key
+            if (!providerName) {
+                const legacyRes = await query('SELECT value FROM system_settings WHERE key = $1', ['storage_provider']);
+                providerName = legacyRes.rows[0]?.value || 'local';
+                // 迁移旧 key 到新 key
+                if (legacyRes.rows[0]) {
+                    console.log(`[StorageManager] Migrating legacy key 'storage_provider' -> 'active_storage_provider' = ${providerName}`);
+                    await StorageManager.updateSetting('active_storage_provider', providerName);
+                }
+            }
+
+            console.log(`[StorageManager] Active provider from settings: ${providerName}`);
 
             // 3. 加载所有 OneDrive 账户
             const accountsRes = await query('SELECT * FROM storage_accounts WHERE type = $1', ['onedrive']);

@@ -80,7 +80,8 @@ const handleUpload = async (req: Request, res: Response, source: string = 'web')
     try {
         // 1. 获取当前存储提供商
         const provider = storageManager.getProvider();
-        console.log(`[Upload] 🛠️  Current storage provider: ${provider.name}`);
+        const activeAccountId = storageManager.getActiveAccountId();
+        console.log(`[Upload] 🛠️  Current storage provider: ${provider.name}, activeAccountId: ${activeAccountId || 'none (local)'}`);
 
         // 2. 在保存到永久存储前生成缩略图和获取尺寸
         let thumbnailPath = null;
@@ -127,8 +128,6 @@ const handleUpload = async (req: Request, res: Response, source: string = 'web')
         else if (mimeType.startsWith('video/')) type = 'video';
         else if (mimeType.startsWith('audio/')) type = 'audio';
         else if (mimeType.includes('pdf') || mimeType.includes('document') || mimeType.includes('text')) type = 'document';
-
-        const activeAccountId = storageManager.getActiveAccountId();
 
         const result = await query(
             `INSERT INTO files 

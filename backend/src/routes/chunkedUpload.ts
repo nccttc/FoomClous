@@ -242,6 +242,8 @@ router.post('/complete', async (req: Request, res: Response) => {
         // 6. 保存到永久存储
         let storedPath = '';
         const provider = storageManager.getProvider();
+        const activeAccountId = storageManager.getActiveAccountId();
+        console.log(`[ChunkedComplete] 🛠️  Provider: ${provider.name}, accountId: ${activeAccountId || 'none (local)'}`);
         try {
             storedPath = await provider.saveFile(finalPath, storedName, session.mimeType);
         } catch (err) {
@@ -262,8 +264,6 @@ router.post('/complete', async (req: Request, res: Response) => {
         const type = session.mimeType.startsWith('image/') ? 'image' :
             session.mimeType.startsWith('video/') ? 'video' :
                 session.mimeType.startsWith('audio/') ? 'audio' : 'other';
-
-        const activeAccountId = storageManager.getActiveAccountId();
 
         const result = await query(
             `INSERT INTO files 
