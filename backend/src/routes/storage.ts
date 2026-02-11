@@ -206,7 +206,10 @@ router.get('/onedrive/callback', async (req: Request, res: Response) => {
         const profileRes = await axios.get('https://graph.microsoft.com/v1.0/me', {
             headers: { 'Authorization': `Bearer ${tokens.access_token}` }
         });
-        const accountName = profileRes.data.mail || profileRes.data.userPrincipalName || 'OneDrive Account';
+
+        // 优先使用用户设置的 pending name，否则使用 Graph API 返回的名称
+        const pendingName = await storageManager.getSetting('onedrive_pending_name');
+        const accountName = pendingName || profileRes.data.mail || profileRes.data.userPrincipalName || 'OneDrive Account';
 
         // 保存刷新令牌并记录
         // 如果是从设置页面的“更新旧配置”来的，逻辑在 updateOneDriveConfig 里处理
@@ -248,14 +251,14 @@ router.get('/onedrive/callback', async (req: Request, res: Response) => {
 // 更新 OneDrive 配置
 router.put('/config/onedrive', requireAuth, async (req: Request, res: Response) => {
     try {
-        const { clientId, clientSecret, refreshToken, tenantId } = req.body;
+        const { clientId, clientSecret, refreshToken, tenantId, name } = req.body;
 
         if (!clientId || !refreshToken) {
             return res.status(400).json({ error: '缺少必要参数 (Client ID 和 Refresh Token)' });
         }
 
         const { storageManager } = await import('../services/storage.js');
-        await storageManager.updateOneDriveConfig(clientId, clientSecret || '', refreshToken, tenantId || 'common');
+        await storageManager.updateOneDriveConfig(clientId, clientSecret || '', refreshToken, tenantId || 'common', name);
 
         res.json({ success: true, message: 'OneDrive 配置已更新并切换' });
     } catch (error) {

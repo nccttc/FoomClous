@@ -78,6 +78,7 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
     const [odClientId, setOdClientId] = useState("");
     const [odClientSecret, setOdClientSecret] = useState("");
     const [odTenantId, setOdTenantId] = useState("common");
+    const [odAccountName, setOdAccountName] = useState("");
 
     // Load initial config
     useEffect(() => {
@@ -149,7 +150,7 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
         try {
             // 首先保存基础配置（Client ID 和 Secret)
             // 注意：此时可能还没有 Refresh Token，后端需要处理这种情况
-            await fileApi.updateOneDriveConfig(odClientId, odClientSecret, 'pending', odTenantId || 'common');
+            await fileApi.updateOneDriveConfig(odClientId, odClientSecret, 'pending', odTenantId || 'common', odAccountName);
 
             // 获取后端建议的 Redirect URI（最准确，因为它指向真实的 API 地址）
             const redirectUri = (config as any)?.redirectUri || `${(window as any)._env_?.VITE_API_URL || import.meta.env.VITE_API_URL || window.location.origin}/api/storage/onedrive/callback`;
@@ -407,6 +408,16 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
                                             onChange={e => setOdTenantId(e.target.value)}
                                             className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
                                             placeholder="默认为 common"
+                                        />
+                                    </div>
+                                    <div className="space-y-2 md:col-span-2">
+                                        <label className="text-sm font-medium">账户名称 (可选)</label>
+                                        <input
+                                            type="text"
+                                            value={odAccountName}
+                                            onChange={e => setOdAccountName(e.target.value)}
+                                            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                            placeholder="自定义显示名称，例如：个人网盘"
                                         />
                                     </div>
                                 </div>

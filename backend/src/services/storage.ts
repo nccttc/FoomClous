@@ -709,29 +709,41 @@ export class StorageManager {
         await this.init();
     }
 
-    async updateOneDriveConfig(clientId: string, clientSecret: string, refreshToken: string, tenantId: string = 'common') {
+    async updateOneDriveConfig(clientId: string, clientSecret: string, refreshToken: string, tenantId: string = 'common', name?: string) {
         // 同步更新 system_settings 以便 OAuth 回调获取最新的 Client ID/Secret
         await StorageManager.updateSetting('onedrive_client_id', clientId);
         await StorageManager.updateSetting('onedrive_client_secret', clientSecret);
         await StorageManager.updateSetting('onedrive_tenant_id', tenantId);
 
+        // 如果提供了 name，也暂时存到 system_settings，以便 OAuth 回调时使用
+        if (name) {
+            await StorageManager.updateSetting('onedrive_pending_name', name);
+        }
+
         if (this.activeAccountId && this.activeProvider.name === 'onedrive') {
             await query(
                 `UPDATE storage_accounts 
-                 SET config = $2, updated_at = NOW()
+                 SET config = $2, name = COALESCE($3, name), updated_at = NOW()
                  WHERE id = $1`,
-                [this.activeAccountId, JSON.stringify({ clientId, clientSecret, refreshToken, tenantId })]
+                [this.activeAccountId, JSON.stringify({ clientId, clientSecret, refreshToken, tenantId }), name]
             );
         } else if (refreshToken !== 'pending') {
-            // 只有在有实际 Token 时才添加或更新账户，或者如果是第一次设置
-            await this.addOneDriveAccount('OneDrive', clientId, clientSecret, refreshToken, tenantId);
-            // 自动开启
+            // 添加新账户
+            // 此时 name 应该从 Microsoft Graph 获取，或者使用 pending name
+            const pendingName = await this.getSetting('onedrive_pending_name');
+            const finalName = name || pendingName || 'OneDrive Account';
+
+            await this.addOneDriveAccount(finalName, clientId, clientSecret, refreshToken, tenantId);
+
+            // 清除 pending name
+            await query("DELETE FROM system_settings WHERE key = 'onedrive_pending_name'");
+
+            // 自动开启新账户
             const res = await query('SELECT id FROM storage_accounts WHERE type = $1 ORDER BY created_at DESC LIMIT 1', ['onedrive']);
             if (res.rows[0]) {
                 await this.switchAccount(res.rows[0].id);
             }
         }
-        await this.init();
     }
 
     // 切换回本地

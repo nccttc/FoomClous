@@ -325,11 +325,11 @@ class FileAPI {
     }
 
     // 更新 OneDrive 配置
-    async updateOneDriveConfig(clientId: string, clientSecret: string, refreshToken: string, tenantId: string = 'common'): Promise<{ success: boolean; message: string }> {
+    async updateOneDriveConfig(clientId: string, clientSecret: string, refreshToken: string, tenantId: string = 'common', name?: string): Promise<{ success: boolean; message: string }> {
         const response = await fetch(`${API_BASE}/api/storage/config/onedrive`, {
             method: 'PUT',
             headers: getHeaders({ 'Content-Type': 'application/json' }),
-            body: JSON.stringify({ clientId, clientSecret, refreshToken, tenantId }),
+            body: JSON.stringify({ clientId, clientSecret, refreshToken, tenantId, name }),
         });
         if (response.status === 401) throw new Error('UNAUTHORIZED');
         if (!response.ok) throw new Error('更新配置失败');
