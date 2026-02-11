@@ -112,7 +112,7 @@ export class OneDriveStorageProvider implements IStorageProvider {
      * 生成 OAuth 授权 URL
      */
     static generateAuthUrl(clientId: string, tenantId: string = 'common', redirectUri: string): string {
-        const scope = encodeURIComponent('Files.ReadWrite.All offline_access');
+        const scope = encodeURIComponent('Files.ReadWrite.All User.Read offline_access');
         const encodedRedirect = encodeURIComponent(redirectUri);
         return `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?client_id=${clientId}&scope=${scope}&response_type=code&redirect_uri=${encodedRedirect}&response_mode=query`;
     }
@@ -720,14 +720,9 @@ export class StorageManager {
             await StorageManager.updateSetting('onedrive_pending_name', name);
         }
 
-        if (this.activeAccountId && this.activeProvider.name === 'onedrive') {
-            await query(
-                `UPDATE storage_accounts 
-                 SET config = $2, name = COALESCE($3, name), updated_at = NOW()
-                 WHERE id = $1`,
-                [this.activeAccountId, JSON.stringify({ clientId, clientSecret, refreshToken, tenantId }), name]
-            );
-        } else if (refreshToken !== 'pending') {
+        // 漏洞修复：不再自动更新当前激活的账户
+        // 如果 refreshToken != 'pending'，说明是在 OAuth 回调或其他场景
+        if (refreshToken !== 'pending') {
             // 添加新账户
             // 此时 name 应该从 Microsoft Graph 获取，或者使用 pending name
             const pendingName = await this.getSetting('onedrive_pending_name');
