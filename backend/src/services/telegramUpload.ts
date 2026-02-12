@@ -331,6 +331,15 @@ function generateBatchStatusMessage(queue: MediaGroupQueue): string {
 
     let message = `${statusIcon} **${statusText}**\n\n`;
 
+    // 如果还有文件在排队或上传中，显示全局排队信息，模仿单文件体验
+    if (completed < total) {
+        const stats = downloadQueue.getStats();
+        // 只有当有排队任务或者队列繁忙时才显示提示
+        if (stats.pending > 0 || stats.active >= 2) {
+            message += `⏳ 已加入下载队列 (当前排队: ${stats.pending})\n💡 请耐心等待，Bot 将按顺序处理任务。\n\n`;
+        }
+    }
+
     if (queue.folderName) {
         message += `📁 文件夹: ${queue.folderName}\n`;
     }
@@ -983,6 +992,9 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
         };
 
         // 加入队列执行
-        await downloadQueue.add(finalFileName, singleUploadTask);
+        // 加入队列执行 (不等待，防止阻塞事件循环)
+        downloadQueue.add(finalFileName, singleUploadTask).catch(err => {
+            console.error(`🤖 单文件下载任务异常: ${finalFileName}`, err);
+        });
     }
 }
