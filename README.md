@@ -92,6 +92,20 @@ docker compose -f docker-compose.prod.yml up -d
 
 ---
 
+## 🤖 Telegram Bot 可用命令
+
+配置完成后，你可以向 Bot 发送以下命令：
+
+| 命令 | 描述 |
+| :--- | :--- |
+| `/start` | 验证身份并开始使用 Bot |
+| `/help` | 获取帮助信息与使用说明 |
+| `/storage` | 查看当前存储空间统计 |
+| `/list` | 查看最近上传的文件列表 |
+| `/delete <文件名>` | 删除指定文件 (需完全匹配文件名) |
+
+---
+
 ## 🔐 安全与访问控制
 
 如果设置了 `ACCESS_PASSWORD_HASH`，访问网页和 API 将需要输入密码。本应用目前使用 **SHA-256** 算法进行哈希。
