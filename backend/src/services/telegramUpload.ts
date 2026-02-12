@@ -126,7 +126,7 @@ interface FileUploadItem {
     fileName: string;
     mimeType: string;
     message: Api.Message;
-    status: 'pending' | 'uploading' | 'success' | 'failed';
+    status: 'pending' | 'queued' | 'uploading' | 'success' | 'failed';
     size?: number;
     fileType?: string;
     error?: string;
@@ -135,6 +135,7 @@ interface FileUploadItem {
         localPath?: string;      // 本地临时文件路径
         estimatedSize?: number;  // 估计的垃圾大小
     };
+    cleanupId?: string;          // 清理任务ID
 }
 
 interface MediaGroupQueue {
@@ -357,6 +358,10 @@ function generateBatchStatusMessage(queue: MediaGroupQueue): string {
                 fileIcon = '⏳';
                 fileStatus = '等待中';
                 break;
+            case 'queued':
+                fileIcon = '🕒';
+                fileStatus = '排队中...';
+                break;
         }
 
         const typeEmoji = getTypeEmoji(file.mimeType);
@@ -369,7 +374,7 @@ function generateBatchStatusMessage(queue: MediaGroupQueue): string {
 
 // 处理单个文件上传（带重试机制）
 async function processFileUpload(client: TelegramClient, file: FileUploadItem, queue?: MediaGroupQueue): Promise<void> {
-    file.status = 'uploading';
+    file.status = 'queued';
 
     if (queue && queue.statusMsgId && queue.chatId) {
         await safeEditMessage(client, queue.chatId as Api.TypeEntityLike, {
@@ -459,6 +464,15 @@ async function processFileUpload(client: TelegramClient, file: FileUploadItem, q
 
     // 将下载和保存逻辑封装为队列任务
     const queueTask = async () => {
+        // 更新状态为上传中
+        file.status = 'uploading';
+        if (queue && queue.statusMsgId && queue.chatId) {
+            await safeEditMessage(client, queue.chatId as Api.TypeEntityLike, {
+                message: queue.statusMsgId,
+                text: generateBatchStatusMessage(queue),
+            });
+        }
+
         // 第一次尝试
         const firstAttemptSuccess = await attemptUpload();
 
@@ -497,10 +511,97 @@ async function processFileUpload(client: TelegramClient, file: FileUploadItem, q
         } else if (!firstAttemptSuccess) {
             file.status = 'failed';
         }
+
+        // 如果文件最终失败，并且有垃圾信息，则添加到待清理列表并发送消息
+        if (file.status === 'failed' && file.garbageInfo?.localPath && file.garbageInfo.estimatedSize) {
+            try {
+                const cleanupId = uuidv4();
+                pendingCleanups.set(cleanupId, {
+                    localPath: file.garbageInfo.localPath,
+                    fileName: file.fileName,
+                    size: file.garbageInfo.estimatedSize,
+                });
+                file.cleanupId = cleanupId;
+
+                const garbageSize = formatBytes(file.garbageInfo.estimatedSize);
+
+                // 发送清理按钮消息 (仅当有队列且在群组/会话中时)
+                if (queue && queue.chatId) {
+                    await client.sendMessage(queue.chatId as Api.TypeEntityLike, {
+                        message: `❌ 文件上传失败: **${file.fileName}**\n📁 原因: ${file.error || '未知错误'}\n\n⚠️ 服务器产生了 ${garbageSize} 垃圾缓存\n点击下方按钮清理：`,
+                        buttons: new Api.ReplyInlineMarkup({
+                            rows: [
+                                new Api.KeyboardButtonRow({
+                                    buttons: [
+                                        new Api.KeyboardButtonCallback({
+                                            text: `🗑️ 清理缓存 (${garbageSize})`,
+                                            data: Buffer.from(cleanupId)
+                                        })
+                                    ]
+                                })
+                            ]
+                        })
+                    });
+                }
+            } catch (e) {
+                console.error('🤖 发送清理按钮消息失败:', e);
+            }
+        }
+
+        // 任务结束，更新最终状态
+        if (queue && queue.statusMsgId && queue.chatId) {
+            await safeEditMessage(client, queue.chatId as Api.TypeEntityLike, {
+                message: queue.statusMsgId,
+                text: generateBatchStatusMessage(queue),
+            });
+        }
     };
 
     // 加入队列并等待执行
-    await downloadQueue.add(file.fileName, queueTask);
+    // 注意：不再 await downloadQueue.add，而是直接返回（因为是 Promise.all 调用）
+    // 但是 downloadQueue.add 返回的是 Promise<void>，它会在 task 完成后 resolve。
+    // 如果我们不 await 它，Promise.all 会立即完成吗？
+    // 不，我们应该 await 它，因为 Promise.all 等待的是 processFileUpload 的 Promise。
+    // 而 processFileUpload 的 Promise 是等待 downloadQueue.add 完成。
+    // 但是 wait，如果我们 await downloadQueue.add，那么 processFileUpload 就会阻塞直到任务完成。
+    // 这正是之前的问题！
+    // 关键点：我们不应该 await downloadQueue.add 的结果（任务完成），
+    // 而是应该只 await 将任务加入队列这个动作。
+    // 但是 downloadQueue.add 的实现目前是返回 Promise，这个 Promise 是在 task resolve 时才 resolve。
+    // 所以我们需要修改 downloadQueue.add 或者 processFileUpload 的调用方式。
+
+    // 如果我们不 await downloadQueue.add，那么 processFileUpload 会立即返回。
+    // 这样 Promise.all 也会立即返回。
+    // 但是 processBatchUpload 末尾不需要等待所有任务完成吗？
+    // 目前代码是不需要的，它只是发完所有请求就结束了，状态更新由回调负责。
+    // 但是等等，downloadQueue.add 返回 Promise<void>，这个 Promise 是 task.execute() 完成后才 resolve 的。
+    // 所以如果我们在 processFileUpload 里 await downloadQueue.add(file.fileName, queueTask)，
+    // 那么 processFileUpload 就会阻塞直到任务完成。
+
+    // 解决方案：
+    // 在 processFileUpload 里，我们将任务加入队列，但不等待它完成。
+    // 可是 downloadQueue.add 目前的设计是等待任务完成。
+    // 让我们看看 downloadQueue.add 的实现：
+    /*
+    async add(fileName: string, execute: () => Promise<void>): Promise<void> {
+        const id = uuidv4();
+        return new Promise((resolve, reject) => {
+            const task: DownloadTask = {
+                 execute: async () => { try { await execute(); resolve(); } ... }
+            };
+            this.queue.push(task);
+            this.processNext();
+        });
+    }
+    */
+    // 是的，它返回的 Promise 是绑在 task 上的。
+
+    // 所以，我们在 processFileUpload 里面不能 await downloadQueue.add。
+    // 我们应该让 processFileUpload 只是“提交”任务。
+
+    downloadQueue.add(file.fileName, queueTask).catch(err => {
+        console.error(`Unhandled error in download task for ${file.fileName}:`, err);
+    });
 }
 
 // 处理批量文件上传队列
@@ -568,50 +669,12 @@ async function processBatchUpload(client: TelegramClient, mediaGroupId: string):
         console.error('🤖 发送批量上传状态消息失败:', e);
     }
 
-    for (const file of queue.files) {
-        await processFileUpload(client, file, queue);
+    // 使用 Promise.all 并行提交任务到队列
+    await Promise.all(queue.files.map(file => processFileUpload(client, file, queue)));
 
-        if (queue.statusMsgId && queue.chatId) {
-            await safeEditMessage(client, queue.chatId as Api.TypeEntityLike, {
-                message: queue.statusMsgId,
-                text: generateBatchStatusMessage(queue),
-            });
-        }
-    }
-
-    // 对于有垃圾缓存的失败文件，发送清理按钮消息
-    const failedFilesWithGarbage = queue.files.filter(f => f.status === 'failed' && f.garbageInfo?.estimatedSize);
-    for (const failedFile of failedFilesWithGarbage) {
-        try {
-            const garbageSize = formatBytes(failedFile.garbageInfo!.estimatedSize!);
-            const cleanupId = `cleanup_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-            // 存储清理信息供回调使用
-            pendingCleanups.set(cleanupId, {
-                localPath: failedFile.garbageInfo!.localPath,
-                fileName: failedFile.fileName,
-                size: failedFile.garbageInfo!.estimatedSize!,
-            });
-
-            await client.sendMessage(queue.chatId as Api.TypeEntityLike, {
-                message: `❌ 文件上传失败: **${failedFile.fileName}**\n📁 原因: ${failedFile.error || '未知错误'}\n\n⚠️ 服务器产生了 ${garbageSize} 垃圾缓存\n点击下方按钮清理：`,
-                buttons: new Api.ReplyInlineMarkup({
-                    rows: [
-                        new Api.KeyboardButtonRow({
-                            buttons: [
-                                new Api.KeyboardButtonCallback({
-                                    text: `🗑️ 清理缓存 (${garbageSize})`,
-                                    data: Buffer.from(cleanupId)
-                                })
-                            ]
-                        })
-                    ]
-                })
-            });
-        } catch (e) {
-            console.error('🤖 发送清理按钮消息失败:', e);
-        }
-    }
+    // 注意：由于 processFileUpload 现在不等待任务完成就返回，
+    // 所以这里的代码会立即执行完。
+    // 但是这是预期的，因为后续的状态更新是在 queueTask 回调中处理的。
 
     mediaGroupQueues.delete(mediaGroupId);
 }
