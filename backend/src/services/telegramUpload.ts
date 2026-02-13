@@ -830,11 +830,30 @@ async function processBatchUpload(client: TelegramClient, mediaGroupId: string):
     queue.folderPath = folderPath;
 
     try {
-        const statusMsg = await safeReply(firstMessage, {
-            message: generateBatchStatusMessage(queue)
-        });
-        if (statusMsg) {
-            queue.statusMsgId = statusMsg.id;
+        // Silent Mode check for Batch Uploads
+        const stats = downloadQueue.getStats();
+        if (stats.pending >= 9) {
+            const now = Date.now();
+            if (now - lastSilentNotificationTime > SILENT_NOTIFICATION_COOLDOWN) {
+                try {
+                    await safeReply(firstMessage, {
+                        message: `🤐 **检测到多文件上传，已切换到静默模式**\n\n当前排队任务: ${stats.pending} 个\nBot 将在后台继续处理所有文件，请耐心等待。\n\n💡 发送 /tasks 查看实时任务状态`
+                    });
+                    lastSilentNotificationTime = now;
+                    console.log(`[Queue] 🤐 Sent Silent Mode notification for batch.`);
+                } catch (e) {
+                    console.error('🤖 发送静默模式通知失败:', e);
+                }
+            }
+            console.log(`[Queue] 🤐 High pending count (${stats.pending}), skipping initial batch status msg.`);
+            // Don't set statusMsgId, so updates won't be sent
+        } else {
+            const statusMsg = await safeReply(firstMessage, {
+                message: generateBatchStatusMessage(queue)
+            });
+            if (statusMsg) {
+                queue.statusMsgId = statusMsg.id;
+            }
         }
     } catch (e) {
         console.error('🤖 发送批量上传状态消息失败:', e);
