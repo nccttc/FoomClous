@@ -531,7 +531,7 @@ function App() {
               uploadProgress={totalUploadProgress}
             />
 
-            <div className="sticky top-0 z-30 bg-background/80 backdrop-blur-sm -mx-4 px-4 pt-2">
+            <div className="sticky top-0 z-30 -mx-4 px-4 pt-2">
               <BulkActionToolbar
                 isVisible={isSelectionMode}
                 selectedFilesCount={selectedFileIds.length}
