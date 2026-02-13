@@ -46,7 +46,33 @@ export const BulkActionToolbar = ({
         setIsCopying(true);
         setErrorMsg(null);
         try {
-            const link = await onShare(password, expiration);
+            let formattedExpiration = expiration;
+            if (expiration) {
+                // Remove any non-digit characters to check format
+                const cleanDate = expiration.replace(/\D/g, '');
+                if (cleanDate.length === 8) { // YYYYMMDD
+                    const year = cleanDate.substring(0, 4);
+                    const month = cleanDate.substring(4, 6);
+                    const day = cleanDate.substring(6, 8);
+
+                    // Create date object (set to end of day just in case)
+                    const date = new Date(`${year}-${month}-${day}T23:59:59Z`);
+                    if (!isNaN(date.getTime())) {
+                        formattedExpiration = date.toISOString();
+                    } else {
+                        throw new Error("无效的日期格式，请使用 YYYY/MM/DD");
+                    }
+                } else if (expiration.includes('/') || expiration.includes('-')) {
+                    const date = new Date(expiration);
+                    if (!isNaN(date.getTime())) {
+                        formattedExpiration = date.toISOString();
+                    } else {
+                        throw new Error("无效的日期格式，请使用 YYYY/MM/DD");
+                    }
+                }
+            }
+
+            const link = await onShare(password, formattedExpiration);
             if (link) {
                 await navigator.clipboard.writeText(link);
                 setCopySuccess(true);
