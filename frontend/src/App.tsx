@@ -623,8 +623,8 @@ function App() {
                                 <p className="text-xs text-muted-foreground">{file.date}</p>
                                 <span className="text-[10px] text-muted-foreground/60">•</span>
                                 <div className="flex items-center gap-1 text-[10px] text-muted-foreground/60">
-                                  {file.source === 'onedrive' ? <Cloud className="h-2.5 w-2.5" /> : (file.source === 'aliyun_oss' ? <Database className="h-2.5 w-2.5" /> : (file.source === 's3' ? <Package className="h-2.5 w-2.5" /> : (file.source === 'webdav' ? <Network className="h-2.5 w-2.5" /> : <HardDrive className="h-2.5 w-2.5" />)))}
-                                  <span>{file.source === 'onedrive' ? 'OneDrive' : (file.source === 'aliyun_oss' ? 'Aliyun OSS' : (file.source === 's3' ? 'S3' : (file.source === 'webdav' ? 'WebDAV' : 'Local')))}</span>
+                                  {file.source === 'onedrive' ? <Cloud className="h-2.5 w-2.5" /> : (file.source === 'google_drive' ? <Database className="h-2.5 w-2.5" /> : (file.source === 'aliyun_oss' ? <Database className="h-2.5 w-2.5" /> : (file.source === 's3' ? <Package className="h-2.5 w-2.5" /> : (file.source === 'webdav' ? <Network className="h-2.5 w-2.5" /> : <HardDrive className="h-2.5 w-2.5" />))))}
+                                  <span>{file.source === 'onedrive' ? 'OneDrive' : (file.source === 'google_drive' ? 'Google Drive' : (file.source === 'aliyun_oss' ? 'Aliyun OSS' : (file.source === 's3' ? 'S3' : (file.source === 'webdav' ? 'WebDAV' : 'Local'))))}</span>
                                 </div>
                               </div>
                             </div>
@@ -736,8 +736,8 @@ function App() {
                                       <p className="text-xs text-muted-foreground">{file.date}</p>
                                       <span className="text-[10px] text-muted-foreground/60">•</span>
                                       <div className="flex items-center gap-1 text-[10px] text-muted-foreground/60">
-                                        {file.source === 'onedrive' ? <Cloud className="h-2.5 w-2.5" /> : (file.source === 'aliyun_oss' ? <Database className="h-2.5 w-2.5" /> : (file.source === 's3' ? <Package className="h-2.5 w-2.5" /> : (file.source === 'webdav' ? <Network className="h-2.5 w-2.5" /> : <HardDrive className="h-2.5 w-2.5" />)))}
-                                        <span>{file.source === 'onedrive' ? 'OneDrive' : (file.source === 'aliyun_oss' ? 'Aliyun OSS' : (file.source === 's3' ? 'S3' : (file.source === 'webdav' ? 'WebDAV' : 'Local')))}</span>
+                                        {file.source === 'onedrive' ? <Cloud className="h-2.5 w-2.5" /> : (file.source === 'google_drive' ? <Database className="h-2.5 w-2.5" /> : (file.source === 'aliyun_oss' ? <Database className="h-2.5 w-2.5" /> : (file.source === 's3' ? <Package className="h-2.5 w-2.5" /> : (file.source === 'webdav' ? <Network className="h-2.5 w-2.5" /> : <HardDrive className="h-2.5 w-2.5" />))))}
+                                        <span>{file.source === 'onedrive' ? 'OneDrive' : (file.source === 'google_drive' ? 'Google Drive' : (file.source === 'aliyun_oss' ? 'Aliyun OSS' : (file.source === 's3' ? 'S3' : (file.source === 'webdav' ? 'WebDAV' : 'Local'))))}</span>
                                       </div>
                                     </div>
                                   </div>

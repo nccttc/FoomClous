@@ -52,13 +52,25 @@ FoomClous 支持多种存储后端。您可以根据对速度、容量和成本�
 
 ---
 
-## 5. 阿里云 OSS
+---
 
-国内用户推荐，响应速度极快。
+## 5. Google Drive
 
-- **Region**: 所在的地域 ID (如 `oss-cn-shanghai`)。
-- **Credentials**: AccessKey ID & Secret。
-- **Bucket**: 存储桶名称。
+适合需要大量存储空间且拥有 Google 账号的用户。
+
+### 获取凭据
+1. 访问 [Google Cloud Console](https://console.cloud.google.com/apis/credentials)。
+2. 创建“OAuth 2.0 客户端 ID”。
+3. **应用类型**选择 `Web 应用程序`。
+4. 在“已授权的重定向 URI”中填写：`https://您的域名/api/storage/google-drive/callback`。
+5. 获取 **Client ID** 和 **Client Secret**。
+
+### 开启功能
+- **设置 -> 存储源 -> Google Drive**，输入凭据并点击“保存并授权”。
+
+---
+
+## 6. 阿里云 OSS
 
 ---
 

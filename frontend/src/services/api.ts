@@ -330,6 +330,7 @@ class FileAPI {
         activeAccountId: string | null;
         accounts: StorageAccount[];
         redirectUri: string;
+        googleDriveRedirectUri: string;
     }> {
         const response = await fetch(`${API_BASE}/api/storage/config`, {
             headers: getHeaders(),
@@ -397,7 +398,7 @@ class FileAPI {
     }
 
     // 切换存储提供商或账户
-    async switchStorageProvider(provider: 'local' | 'onedrive' | 'aliyun_oss' | 's3' | 'webdav', accountId?: string): Promise<{ success: boolean; message: string }> {
+    async switchStorageProvider(provider: 'local' | 'onedrive' | 'aliyun_oss' | 's3' | 'webdav' | 'google_drive', accountId?: string): Promise<{ success: boolean; message: string }> {
         const response = await fetch(`${API_BASE}/api/storage/switch`, {
             method: 'POST',
             headers: getHeaders({ 'Content-Type': 'application/json' }),
@@ -447,6 +448,21 @@ class FileAPI {
             method: 'POST',
             headers: getHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ clientId, tenantId, redirectUri, clientSecret }),
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || '获取授权地址失败');
+        }
+
+        return response.json();
+    }
+
+    async getGoogleDriveAuthUrl(clientId: string, clientSecret: string, redirectUri: string): Promise<{ authUrl: string }> {
+        const response = await fetch(`${API_BASE}/api/storage/config/google-drive/auth-url`, {
+            method: 'POST',
+            headers: getHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ clientId, clientSecret, redirectUri }),
         });
 
         if (!response.ok) {

@@ -29,6 +29,19 @@ function getOneDriveRedirectUri(req: Request): string {
     return `${protocol}://${host}/api/storage/onedrive/callback`;
 }
 
+/**
+ * 获取 Google Drive 重定向 URI
+ */
+function getGoogleDriveRedirectUri(req: Request): string {
+    const apiBase = process.env.VITE_API_URL;
+    if (apiBase) {
+        return `${apiBase.replace(/\/$/, '')}/api/storage/google-drive/callback`;
+    }
+    const protocol = req.protocol;
+    const host = req.get('host');
+    return `${protocol}://${host}/api/storage/google-drive/callback`;
+}
+
 
 // 获取存储统计
 router.get('/stats', requireAuth, async (_req: Request, res: Response) => {
@@ -123,6 +136,7 @@ router.get('/config', requireAuth, async (req: Request, res: Response) => {
             activeAccountId,
             accounts,
             redirectUri,
+            googleDriveRedirectUri: getGoogleDriveRedirectUri(req),
         });
     } catch (error) {
         console.error('获取存储配置失败:', error);
@@ -254,6 +268,92 @@ router.get('/onedrive/callback', async (req: Request, res: Response) => {
     }
 });
 
+// 获取 Google Drive 授权 URL
+router.post('/config/google-drive/auth-url', requireAuth, async (req: Request, res: Response) => {
+    try {
+        const { clientId, clientSecret, redirectUri } = req.body;
+        if (!clientId || !clientSecret || !redirectUri) {
+            return res.status(400).json({ error: '缺少必要参数 (Client ID, Client Secret 或 Redirect URI)' });
+        }
+
+        const { GoogleDriveStorageProvider, StorageManager } = await import('../services/storage.js');
+        const authUrl = GoogleDriveStorageProvider.generateAuthUrl(clientId, clientSecret, redirectUri);
+
+        // 临时保存配置以便回调使用
+        await StorageManager.updateSetting('google_drive_client_id', clientId);
+        await StorageManager.updateSetting('google_drive_client_secret', clientSecret);
+        await StorageManager.updateSetting('google_drive_redirect_uri', redirectUri);
+
+        res.json({ authUrl });
+    } catch (error) {
+        console.error('获取 Google Drive 授权 URL 失败:', error);
+        res.status(500).json({ error: '获取授权 URL 失败' });
+    }
+});
+
+// Google Drive OAuth 回调
+router.get('/google-drive/callback', async (req: Request, res: Response) => {
+    try {
+        const { code, error } = req.query;
+
+        if (error) {
+            return res.send(`授权失败: ${error}`);
+        }
+
+        if (!code) {
+            return res.send('缺少授权码 (code)');
+        }
+
+        const { storageManager, GoogleDriveStorageProvider } = await import('../services/storage.js');
+        const clientId = await storageManager.getSetting('google_drive_client_id');
+        const clientSecret = await storageManager.getSetting('google_drive_client_secret') || '';
+        const redirectUri = await storageManager.getSetting('google_drive_redirect_uri') || getGoogleDriveRedirectUri(req);
+
+        if (!clientId || !clientSecret) {
+            return res.send('配置信息丢失，请返回设置页面重试。');
+        }
+
+        const tokens = await GoogleDriveStorageProvider.exchangeCodeForToken(clientId, clientSecret, redirectUri, code as string);
+
+        if (!tokens.refresh_token) {
+            return res.send('授权失败：未获得 Refresh Token。请确保是首次授权，或在 Google 控制台中撤销权限后重试。');
+        }
+
+        // 保存账户
+        await storageManager.addGoogleDriveAccount('Google Drive Account', clientId, clientSecret, tokens.refresh_token, redirectUri);
+
+        // 自动切到新账户
+        const accounts = await storageManager.getAccounts();
+        const newAccount = accounts.filter(a => a.type === 'google_drive').sort((a, b) => b.created_at - a.created_at)[0];
+        if (newAccount) {
+            await storageManager.switchAccount(newAccount.id);
+        }
+
+        res.send(`
+            <html>
+                <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0;">
+                    <div style="text-align: center; padding: 40px; border-radius: 20px; background: #f0fdf4; border: 1px solid #bbf7d0;">
+                        <h2 style="color: #16a34a; margin-bottom: 10px;">🎉 授权成功！</h2>
+                        <p style="color: #15803d; margin-bottom: 20px;">Google Drive 已成功连接并启用。</p>
+                        <button onclick="window.close()" style="padding: 10px 20px; background: #16a34a; color: white; border: none; border-radius: 8px; cursor: pointer;">关闭此窗口</button>
+                        <script>
+                            setTimeout(() => {
+                                if (window.opener) {
+                                    window.opener.postMessage('google_drive_auth_success', '*');
+                                }
+                                window.close();
+                            }, 3000);
+                        </script>
+                    </div>
+                </body>
+            </html>
+        `);
+    } catch (error: any) {
+        console.error('Google Drive 回调处理失败:', error);
+        res.status(500).send(`授权处理出错: ${error.message}`);
+    }
+});
+
 // 更新 OneDrive 配置
 router.put('/config/onedrive', requireAuth, async (req: Request, res: Response) => {
     try {
@@ -339,7 +439,7 @@ router.post('/switch', requireAuth, async (req: Request, res: Response) => {
         if (provider === 'local') {
             await storageManager.switchToLocal();
             return res.json({ success: true, message: '已切换到本地存储' });
-        } else if (provider === 'onedrive' || provider === 'aliyun_oss' || provider === 's3' || provider === 'webdav') {
+        } else if (provider === 'onedrive' || provider === 'aliyun_oss' || provider === 's3' || provider === 'webdav' || provider === 'google_drive') {
             if (accountId) {
                 await storageManager.switchAccount(accountId);
                 return res.json({ success: true, message: `已切换 ${provider} 账户` });

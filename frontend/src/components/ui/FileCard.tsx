@@ -57,6 +57,8 @@ export const FileCard = ({
                 return { Icon: Package, label: 'S3' };
             case 'webdav':
                 return { Icon: Network, label: 'WebDAV' };
+            case 'google_drive':
+                return { Icon: Database, label: 'Google Drive' };
             default:
                 return { Icon: HardDrive, label: 'Local' };
         }

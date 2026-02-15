@@ -70,6 +70,7 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
         activeAccountId: string | null;
         accounts: any[];
         redirectUri: string;
+        googleDriveRedirectUri?: string;
     } | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [showOneDriveForm, setShowOneDriveForm] = useState(false);
@@ -105,16 +106,17 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
     const [webdavPassword, setWebdavPassword] = useState("");
     const [showWebDAVForm, setShowWebDAVForm] = useState(false);
 
+    // Google Drive Form State
+    const [gdClientId, setGdClientId] = useState("");
+    const [gdClientSecret, setGdClientSecret] = useState("");
+    const [showGDForm, setShowGDForm] = useState(false);
+
     // Load initial config
     useEffect(() => {
         const loadConfig = async () => {
             try {
                 const data = await fileApi.getStorageConfig();
                 setConfig(data);
-                if (data.provider === 'onedrive' && data.activeAccountId) {
-                    // Just pre-fill with defaults for new additions, or maybe we don't need pre-fill anymore
-                    // since we are adding NEW accounts.
-                }
             } catch (error) {
                 console.error("Failed to load storage config:", error);
             }
@@ -122,7 +124,7 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
         loadConfig();
     }, []);
 
-    const handleSwitchProvider = async (provider: 'local' | 'onedrive' | 'aliyun_oss' | 's3' | 'webdav', accountId?: string) => {
+    const handleSwitchProvider = async (provider: 'local' | 'onedrive' | 'aliyun_oss' | 's3' | 'webdav' | 'google_drive', accountId?: string) => {
         if (isSaving) return;
 
         // If switching to the same account/provider, do nothing
@@ -131,6 +133,7 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
         if (provider === 'aliyun_oss' && accountId === config?.activeAccountId) return;
         if (provider === 's3' && accountId === config?.activeAccountId) return;
         if (provider === 'webdav' && accountId === config?.activeAccountId) return;
+        if (provider === 'google_drive' && accountId === config?.activeAccountId) return;
 
         // If switching to OneDrive and no accounts exist, show form
         const onedriveAccounts = config?.accounts.filter(a => a.type === 'onedrive') || [];
@@ -160,12 +163,20 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
             return;
         }
 
+        // If switching to Google Drive and no accounts exist, show form
+        const gdAccounts = config?.accounts.filter(a => a.type === 'google_drive') || [];
+        if (provider === 'google_drive' && gdAccounts.length === 0) {
+            setShowGDForm(true);
+            return;
+        }
+
         const providerNames = {
             'local': '本地存储',
             'onedrive': 'OneDrive',
             'aliyun_oss': '阿里云 OSS',
             's3': 'S3 兼容存储',
-            'webdav': 'WebDAV 存储'
+            'webdav': 'WebDAV 存储',
+            'google_drive': 'Google Drive'
         };
         const providerName = providerNames[provider];
 
@@ -173,14 +184,47 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
 
         setIsSaving(true);
         try {
-            await fileApi.switchStorageProvider(provider, accountId);
+            await fileApi.switchStorageProvider(provider as any, accountId);
             const data = await fileApi.getStorageConfig();
             setConfig(data);
             alert(`已成功切换到 ${providerName}`);
-            // Optional: refresh page or trigger file list reload if needed
-            window.location.reload(); // Simple way to ensure all components refresh
+            window.location.reload();
         } catch (error: any) {
             alert(error.message);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleSaveGDConfig = async () => {
+        if (!gdClientId || !gdClientSecret) {
+            alert("请填写 Client ID 和 Client Secret");
+            return;
+        }
+        setIsSaving(true);
+        try {
+            const redirectUri = config?.googleDriveRedirectUri || config?.redirectUri?.replace('onedrive', 'google-drive') || `${window.location.origin}/api/storage/google-drive/callback`;
+            const { authUrl } = await fileApi.getGoogleDriveAuthUrl(gdClientId, gdClientSecret, redirectUri);
+
+            const width = 600;
+            const height = 700;
+            const left = window.screenX + (window.innerWidth - width) / 2;
+            const top = window.screenY + (window.innerHeight - height) / 2;
+
+            window.open(authUrl, 'GoogleDriveAuth', `width=${width},height=${height},left=${left},top=${top},status=yes,toolbar=no,menubar=no`);
+
+            const messageHandler = async (event: MessageEvent) => {
+                if (event.data === 'google_drive_auth_success') {
+                    const newData = await fileApi.getStorageConfig();
+                    setConfig(newData);
+                    alert("Google Drive 授权成功并已启用！");
+                    setShowGDForm(false);
+                    window.removeEventListener('message', messageHandler);
+                }
+            };
+            window.addEventListener('message', messageHandler);
+        } catch (error: any) {
+            alert("发起授权失败: " + error.message);
         } finally {
             setIsSaving(false);
         }
@@ -205,34 +249,19 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
         }
         setIsSaving(true);
         try {
-            // 首先保存基础配置（Client ID 和 Secret)
-            // 注意：此时可能还没有 Refresh Token，后端需要处理这种情况
             await fileApi.updateOneDriveConfig(odClientId, odClientSecret, 'pending', odTenantId || 'common', odAccountName);
-
-            // 获取后端建议的 Redirect URI（最准确，因为它指向真实的 API 地址）
-            const redirectUri = (config as any)?.redirectUri || `${(window as any)._env_?.VITE_API_URL || import.meta.env.VITE_API_URL || window.location.origin}/api/storage/onedrive/callback`;
-            console.log(`[OneDrive] Using Redirect URI: ${redirectUri}`);
-
-            // 获取授权 URL
+            const redirectUri = config?.redirectUri || `${(window as any)._env_?.VITE_API_URL || import.meta.env.VITE_API_URL || window.location.origin}/api/storage/onedrive/callback`;
             const { authUrl } = await fileApi.getOneDriveAuthUrl(odClientId, odTenantId || 'common', redirectUri, odClientSecret);
 
-            // 打开弹出窗口进行授权
             const width = 600;
             const height = 700;
             const left = window.screenX + (window.innerWidth - width) / 2;
             const top = window.screenY + (window.innerHeight - height) / 2;
 
-            window.open(
-                authUrl,
-                'OneDriveAuth',
-                `width=${width},height=${height},left=${left},top=${top},status=yes,toolbar=no,menubar=no`
-            );
+            window.open(authUrl, 'OneDriveAuth', `width=${width},height=${height},left=${left},top=${top},status=yes,toolbar=no,menubar=no`);
 
-            // 监听来自授权窗口的消息
             const messageHandler = async (event: MessageEvent) => {
                 if (event.data === 'onedrive_auth_success') {
-                    console.log('OneDrive Auth Success message received!');
-                    // 重新加载配置
                     const newData = await fileApi.getStorageConfig();
                     setConfig(newData);
                     alert("OneDrive 授权成功并已启用！");
@@ -240,7 +269,6 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
                 }
             };
             window.addEventListener('message', messageHandler);
-
         } catch (error: any) {
             alert("发起授权失败: " + error.message);
         } finally {
@@ -255,13 +283,7 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
         }
         setIsSaving(true);
         try {
-            await fileApi.addAliyunOSSAccount(
-                ossAccountName,
-                ossRegion,
-                ossAccessKeyId,
-                ossAccessKeySecret,
-                ossBucket
-            );
+            await fileApi.addAliyunOSSAccount(ossAccountName, ossRegion, ossAccessKeyId, ossAccessKeySecret, ossBucket);
             const data = await fileApi.getStorageConfig();
             setConfig(data);
             alert("阿里云 OSS 账户添加成功！");
@@ -280,15 +302,7 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
         }
         setIsSaving(true);
         try {
-            await fileApi.addS3Account(
-                s3AccountName,
-                s3Endpoint,
-                s3Region,
-                s3AccessKeyId,
-                s3AccessKeySecret,
-                s3Bucket,
-                s3ForcePathStyle
-            );
+            await fileApi.addS3Account(s3AccountName, s3Endpoint, s3Region, s3AccessKeyId, s3AccessKeySecret, s3Bucket, s3ForcePathStyle);
             const data = await fileApi.getStorageConfig();
             setConfig(data);
             alert("S3 兼容存储账户添加成功！");
@@ -307,12 +321,7 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
         }
         setIsSaving(true);
         try {
-            await fileApi.addWebDAVAccount(
-                webdavAccountName,
-                webdavUrl,
-                webdavUsername,
-                webdavPassword
-            );
+            await fileApi.addWebDAVAccount(webdavAccountName, webdavUrl, webdavUsername, webdavPassword);
             const data = await fileApi.getStorageConfig();
             setConfig(data);
             alert("WebDAV 存储账户添加成功！");
@@ -412,6 +421,163 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
                         }
                     />
                 </div>
+
+                <div className="p-4 bg-muted/20 border-b border-border/50">
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-lg bg-muted text-muted-foreground">
+                                <Database className="h-4 w-4" />
+                            </div>
+                            <div>
+                                <span className="text-sm font-medium">Google Drive 账户</span>
+                                <p className="text-xs text-muted-foreground">管理及切换多个 Google Drive 账户</p>
+                            </div>
+                        </div>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setShowGDForm(!showGDForm)}
+                        >
+                            {showGDForm ? "取消添加" : "添加新账户"}
+                        </Button>
+                    </div>
+
+                    <div className="space-y-2">
+                        {config?.accounts.filter(a => a.type === 'google_drive').map((account) => (
+                            <div
+                                key={account.id}
+                                className={cn(
+                                    "flex items-center justify-between p-3 rounded-lg border transition-all",
+                                    account.is_active
+                                        ? "bg-primary/5 border-primary/20 ring-1 ring-primary/10"
+                                        : "bg-background border-border hover:border-border/80"
+                                )}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className={cn(
+                                        "h-2 w-2 rounded-full",
+                                        account.is_active ? "bg-primary animate-pulse" : "bg-muted-foreground/30"
+                                    )} />
+                                    <div>
+                                        <p className="text-sm font-medium">{account.name || "未命名账户"}</p>
+                                        <p className="text-[10px] text-muted-foreground font-mono opacity-60">{account.id}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {account.is_active ? (
+                                        <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-green-500/10 text-green-600 dark:text-green-400">
+                                            <CheckCircle className="h-3.5 w-3.5" />
+                                            <span className="text-xs font-semibold">正在使用</span>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                className="h-8 text-xs hover:bg-primary/10 hover:text-primary"
+                                                onClick={() => handleSwitchProvider('google_drive', account.id)}
+                                                disabled={isSaving}
+                                            >
+                                                切换到此账户
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                className="h-8 w-8 p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                                onClick={() => handleDeleteAccount(account.id, account.name)}
+                                                disabled={isSaving}
+                                            >
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                            </Button>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                        {config?.accounts.filter(a => a.type === 'google_drive').length === 0 && !showGDForm && (
+                            <div className="text-center py-6 border border-dashed rounded-lg border-border/50">
+                                <p className="text-xs text-muted-foreground">尚未配置 Google Drive 账户</p>
+                                <Button
+                                    variant="link"
+                                    size="sm"
+                                    className="mt-1"
+                                    onClick={() => setShowGDForm(true)}
+                                >
+                                    立即添加
+                                </Button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <AnimatePresence>
+                    {showGDForm && (
+                        <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="bg-muted/30 border-t border-border/50"
+                        >
+                            <div className="p-6 space-y-6">
+                                <div className="space-y-4">
+                                    <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+                                        <Database className="h-4 w-4" />
+                                        <span>Google Drive API 凭证</span>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground leading-relaxed">
+                                        前往 <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">Google Cloud Console</a> 创建 <b>OAuth 2.0 客户端 ID</b>。
+                                        应用类型选择 <code>Web 应用程序</code>，并添加以下<b>已授权的重定向 URI</b>：
+                                        <code className="block mt-1 p-1 bg-muted rounded text-primary">{(config as any)?.googleDriveRedirectUri || `${window.location.origin}/api/storage/google-drive/callback`}</code>
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-2 md:col-span-2">
+                                        <label className="text-sm font-medium">客户端 ID (Client ID)</label>
+                                        <input
+                                            type="text"
+                                            value={gdClientId}
+                                            onChange={e => setGdClientId(e.target.value)}
+                                            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                            placeholder="Google Cloud Client ID"
+                                        />
+                                    </div>
+                                    <div className="space-y-2 md:col-span-2">
+                                        <label className="text-sm font-medium">客户端密钥 (Client Secret)</label>
+                                        <input
+                                            type="password"
+                                            value={gdClientSecret}
+                                            onChange={e => setGdClientSecret(e.target.value)}
+                                            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                            placeholder="Google Cloud Client Secret"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="p-4 rounded-xl border border-blue-500/20 bg-blue-500/5 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="space-y-0.5">
+                                            <h4 className="text-sm font-medium text-blue-600 dark:text-blue-400">开始授权</h4>
+                                            <p className="text-xs text-muted-foreground">点击按钮前往 Google 页面完成授权。</p>
+                                        </div>
+                                        <Button
+                                            size="sm"
+                                            onClick={handleSaveGDConfig}
+                                            disabled={isSaving || !gdClientId || !gdClientSecret}
+                                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                                        >
+                                            {isSaving ? "发起中..." : "保存并授权"}
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-end pt-2">
+                                    <Button variant="ghost" onClick={() => setShowGDForm(false)}>关闭</Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
 
                 <div className="p-4 bg-muted/20 border-b border-border/50">
                     <div className="flex items-center justify-between mb-4">

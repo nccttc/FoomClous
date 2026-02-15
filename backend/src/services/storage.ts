@@ -5,6 +5,7 @@ import OSS from 'ali-oss';
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl as getS3SignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createClient, WebDAVClient } from 'webdav';
+import { google } from 'googleapis';
 import { query } from '../db/index.js';
 
 // 接口定义
@@ -828,6 +829,156 @@ export class OneDriveStorageProvider implements IStorageProvider {
     }
 }
 
+// Google Drive 存储实现
+export class GoogleDriveStorageProvider implements IStorageProvider {
+    name = 'google_drive';
+    private oauth2Client: any;
+    private drive: any;
+    private tokenExpiresAt: number = 0;
+    private readonly GOOGLE_DRIVE_FOLDER = 'FoomClous';
+
+    constructor(
+        public id: string,
+        private clientId: string,
+        private clientSecret: string,
+        private refreshToken: string,
+        private redirectUri: string
+    ) {
+        this.oauth2Client = new google.auth.OAuth2(
+            this.clientId,
+            this.clientSecret,
+            this.redirectUri
+        );
+        this.oauth2Client.setCredentials({
+            refresh_token: this.refreshToken
+        });
+        this.drive = google.drive({ version: 'v3', auth: this.oauth2Client });
+    }
+
+    static generateAuthUrl(clientId: string, clientSecret: string, redirectUri: string): string {
+        const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+        return oauth2Client.generateAuthUrl({
+            access_type: 'offline',
+            scope: ['https://www.googleapis.com/auth/drive.file'],
+            prompt: 'consent'
+        });
+    }
+
+    static async exchangeCodeForToken(clientId: string, clientSecret: string, redirectUri: string, code: string) {
+        const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+        const { tokens } = await oauth2Client.getToken(code);
+        return tokens;
+    }
+
+    private async ensureAuthenticated() {
+        const credentials = await this.oauth2Client.getAccessToken();
+        if (credentials.token) {
+            this.tokenExpiresAt = credentials.res?.data?.expiry_date || 0;
+        }
+    }
+
+    private async ensureFolderExists(): Promise<string> {
+        await this.ensureAuthenticated();
+        const response = await this.drive.files.list({
+            q: `name = '${this.GOOGLE_DRIVE_FOLDER}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+            fields: 'files(id)',
+            spaces: 'drive'
+        });
+
+        if (response.data.files && response.data.files.length > 0) {
+            return response.data.files[0].id;
+        }
+
+        const folderMetadata = {
+            name: this.GOOGLE_DRIVE_FOLDER,
+            mimeType: 'application/vnd.google-apps.folder'
+        };
+
+        const folder = await this.drive.files.create({
+            resource: folderMetadata,
+            fields: 'id'
+        });
+
+        return folder.data.id;
+    }
+
+    async saveFile(tempPath: string, fileName: string, mimeType: string): Promise<string> {
+        await this.ensureAuthenticated();
+        const folderId = await this.ensureFolderExists();
+
+        const fileMetadata = {
+            name: fileName,
+            parents: [folderId]
+        };
+
+        const media = {
+            mimeType: mimeType,
+            body: fs.createReadStream(tempPath)
+        };
+
+        try {
+            const file = await this.drive.files.create({
+                resource: fileMetadata,
+                media: media,
+                fields: 'id'
+            });
+            console.log('[GoogleDrive] Upload successful, file ID:', file.data.id);
+            return file.data.id;
+        } catch (error: any) {
+            console.error('[GoogleDrive] Upload failed:', error.message);
+            throw new Error(`Google Drive upload failed: ${error.message}`);
+        }
+    }
+
+    async getFileStream(storedPath: string): Promise<NodeJS.ReadableStream> {
+        await this.ensureAuthenticated();
+        try {
+            const response = await this.drive.files.get(
+                { fileId: storedPath, alt: 'media' },
+                { responseType: 'stream' }
+            );
+            return response.data;
+        } catch (error: any) {
+            console.error('[GoogleDrive] Get stream failed:', error.message);
+            throw new Error(`Google Drive get stream failed: ${error.message}`);
+        }
+    }
+
+    async getPreviewUrl(storedPath: string): Promise<string> {
+        // Google Drive 预览 URL 需要 OAuth 或公开分享。目前我们返回空以便通过代理下载。
+        return '';
+    }
+
+    async deleteFile(storedPath: string): Promise<void> {
+        await this.ensureAuthenticated();
+        try {
+            await this.drive.files.delete({ fileId: storedPath });
+            console.log('[GoogleDrive] Delete successful:', storedPath);
+        } catch (error: any) {
+            if (error.code === 404) {
+                console.log('[GoogleDrive] File not found, skipping delete:', storedPath);
+                return;
+            }
+            console.error('[GoogleDrive] Delete failed:', error.message);
+            throw new Error(`Google Drive delete failed: ${error.message}`);
+        }
+    }
+
+    async getFileSize(storedPath: string): Promise<number> {
+        await this.ensureAuthenticated();
+        try {
+            const response = await this.drive.files.get({
+                fileId: storedPath,
+                fields: 'size'
+            });
+            return parseInt(response.data.size || '0');
+        } catch (error: any) {
+            console.error('[GoogleDrive] Get file size failed:', error.message);
+            return 0;
+        }
+    }
+}
+
 // 存储管理器
 export class StorageManager {
     private static instance: StorageManager;
@@ -946,6 +1097,15 @@ export class StorageManager {
                         config.password
                     );
                     this.providers.set(`webdav:${row.id}`, provider);
+                } else if (row.type === 'google_drive') {
+                    provider = new GoogleDriveStorageProvider(
+                        row.id,
+                        config.clientId,
+                        config.clientSecret,
+                        config.refreshToken,
+                        config.redirectUri
+                    );
+                    this.providers.set(`google_drive:${row.id}`, provider);
                 }
 
                 if (provider && row.is_active) {
@@ -1142,6 +1302,23 @@ export class StorageManager {
 
         const webdav = new WebDAVStorageProvider(targetId, url, username, password);
         this.providers.set(`webdav:${targetId}`, webdav);
+
+        return targetId;
+    }
+
+    async addGoogleDriveAccount(name: string, clientId: string, clientSecret: string, refreshToken: string, redirectUri: string) {
+        const config = JSON.stringify({ clientId, clientSecret, refreshToken, redirectUri });
+
+        const res = await query(
+            `INSERT INTO storage_accounts (type, name, config, is_active) 
+             VALUES ($1, $2, $3, $4) RETURNING id`,
+            ['google_drive', name, config, false]
+        );
+        const targetId = res.rows[0].id;
+        console.log(`[StorageManager] Added new Google Drive account: ${targetId}`);
+
+        const gd = new GoogleDriveStorageProvider(targetId, clientId, clientSecret, refreshToken, redirectUri);
+        this.providers.set(`google_drive:${targetId}`, gd);
 
         return targetId;
     }
