@@ -52,8 +52,6 @@ FoomClous 支持多种存储后端。您可以根据对速度、容量和成本�
 
 ---
 
----
-
 ## 5. Google Drive
 
 适合需要大量存储空间且拥有 Google 账号的用户。
@@ -72,7 +70,11 @@ FoomClous 支持多种存储后端。您可以根据对速度、容量和成本�
 
 ## 6. 阿里云 OSS
 
----
+国内用户推荐，响应速度极快。
+
+- **Region**: 所在的地域 ID (如 `oss-cn-shanghai`)。
+- **Credentials**: AccessKey ID & Secret。
+- **Bucket**: 存储桶名称。
 
 ## 🔄 如何切换活动账户？
 
