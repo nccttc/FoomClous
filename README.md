@@ -8,7 +8,7 @@
 
 ### 🏁 快速开始
 - **[存储源配置指南](./storage_configuration_guide.md)**
-  *配置本地、OneDrive、阿里云 OSS、S3 及 WebDAV。*
+  *配置本地、OneDrive、Google Drive、阿里云 OSS、S3 及 WebDAV。*
 - **[Docker 维护与清理](./docker-cleanup-guide.md)**
   *如何保持容器环境整洁，定期清理上传缓存与冗余镜像。*
 
@@ -23,7 +23,7 @@
 ## 🌟 项目亮点
 
 - **多端上传**：支持 Web 后台管理与 Telegram 机器人一键转存。
-- **广阔兼容**：原生适配本地磁盘、S3 兼容存储、WebDAV、OneDrive 等主流云端。
+- **广阔兼容**：原生适配本地磁盘、S3 兼容存储、WebDAV、OneDrive、Google Drive 等主流云端。
 - **智能体验**：支持视频在线预览、GIF 动图自动播放及大文件断点续传。
 - **隐私保护**：所有云端凭据仅本地保存，通过服务器代理模式避免密钥泄露。
 
