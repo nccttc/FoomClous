@@ -647,14 +647,15 @@ async function processBatchUpload(client: TelegramClient, mediaGroupId: string):
         const stats = downloadQueue.getStats();
         const totalPending = stats.pending + queue.files.length;
         const chatIdStr = queue.chatId!.toString();
-
-        await deleteLastStatusMessage(client, queue.chatId);
+        const lastMsgId = lastStatusMessageIdMap.get(chatIdStr);
 
         if (totalPending >= 9) {
             const now = Date.now();
             const lastTime = lastSilentNotificationTimeMap.get(chatIdStr) || 0;
 
-            if (now - lastTime > SILENT_NOTIFICATION_COOLDOWN) {
+            // 仅在冷却结束或当前没有显示通知时，才发送新通知并删除旧通知
+            if (now - lastTime > SILENT_NOTIFICATION_COOLDOWN || !lastMsgId) {
+                await deleteLastStatusMessage(client, queue.chatId);
                 const sMsg = await safeReply(firstMessage, {
                     message: `🤐 **检测到多文件上传，已切换到静默模式**\n\n当前排队任务: ${totalPending} 个\nBot 将在后台继续处理所有文件，请耐心等待。\n\n💡 发送 /tasks 查看实时任务状态`
                 });
@@ -664,6 +665,7 @@ async function processBatchUpload(client: TelegramClient, mediaGroupId: string):
                 lastSilentNotificationTimeMap.set(chatIdStr, now);
             }
         } else {
+            await deleteLastStatusMessage(client, queue.chatId);
             const statusMsg = await safeReply(firstMessage, {
                 message: generateBatchStatusMessage(queue)
             });
@@ -781,13 +783,14 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
         await runStatusAction(message.chatId, async () => {
             const stats = downloadQueue.getStats();
             const chatIdStr = message.chatId!.toString();
-            await deleteLastStatusMessage(client, message.chatId!);
+            const lastMsgId = lastStatusMessageIdMap.get(chatIdStr);
 
             if (stats.pending >= 9) {
                 const now = Date.now();
                 const lastTime = lastSilentNotificationTimeMap.get(chatIdStr) || 0;
 
-                if (now - lastTime > SILENT_NOTIFICATION_COOLDOWN) {
+                if (now - lastTime > SILENT_NOTIFICATION_COOLDOWN || !lastMsgId) {
+                    await deleteLastStatusMessage(client, message.chatId!);
                     const sMsg = await safeReply(message, {
                         message: `🤐 **检测到多文件上传，已切换到静默模式**\n\n当前排队任务: ${stats.pending} 个\nBot 将在后台继续处理所有文件，请耐心等待。\n\n💡 发送 /tasks 查看实时任务状态`
                     });
@@ -797,6 +800,7 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
                     lastSilentNotificationTimeMap.set(chatIdStr, now);
                 }
             } else {
+                await deleteLastStatusMessage(client, message.chatId!);
                 statusMsg = await safeReply(message, {
                     message: `⏳ 正在下载文件: ${finalFileName}\n${generateProgressBar(0, 1)}\n\n${typeEmoji} ${formatBytes(0)} / ${formatBytes(totalSize)}`
                 }) as Api.Message;
