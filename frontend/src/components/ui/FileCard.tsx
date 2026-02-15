@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Download, Eye, FileText, Image as ImageIcon, Music, Video, Trash2, Cloud, HardDrive, Database } from "lucide-react";
+import { Download, Eye, FileText, Image as ImageIcon, Music, Video, Trash2, Cloud, HardDrive, Database, Package } from "lucide-react";
 import { Button } from "./Button";
 import { fileApi, type FileData } from "../../services/api";
 
@@ -53,6 +53,8 @@ export const FileCard = ({
                 return { Icon: Cloud, label: 'OneDrive' };
             case 'aliyun_oss':
                 return { Icon: Database, label: 'Aliyun OSS' };
+            case 's3':
+                return { Icon: Package, label: 'S3' };
             default:
                 return { Icon: HardDrive, label: 'Local' };
         }

@@ -2,6 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
 import OSS from 'ali-oss';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl as getS3SignedUrl } from '@aws-sdk/s3-request-presigner';
 import { query } from '../db/index.js';
 
 // 接口定义
@@ -189,6 +191,105 @@ export class AliyunOSSStorageProvider implements IStorageProvider {
             return parseInt(result.meta['content-length'] || result.res.headers['content-length'] || '0');
         } catch (error: any) {
             console.error('[AliyunOSS] Get file size failed:', error.message);
+            return 0;
+        }
+    }
+}
+
+// S3 兼容存储实现
+export class S3StorageProvider implements IStorageProvider {
+    name = 's3';
+    private client: S3Client;
+
+    constructor(
+        public id: string,
+        private endpoint: string,
+        private region: string,
+        private accessKeyId: string,
+        private secretAccessKey: string,
+        private bucket: string,
+        private forcePathStyle: boolean = false
+    ) {
+        this.client = new S3Client({
+            endpoint: endpoint,
+            region: region,
+            credentials: {
+                accessKeyId: accessKeyId,
+                secretAccessKey: secretAccessKey,
+            },
+            forcePathStyle: forcePathStyle,
+        });
+    }
+
+    async saveFile(tempPath: string, fileName: string, mimeType: string): Promise<string> {
+        try {
+            const fileBuffer = fs.readFileSync(tempPath);
+            const command = new PutObjectCommand({
+                Bucket: this.bucket,
+                Key: fileName,
+                Body: fileBuffer,
+                ContentType: mimeType,
+            });
+            await this.client.send(command);
+            return fileName;
+        } catch (error: any) {
+            console.error('[S3] Upload failed:', error.message);
+            throw new Error(`S3 upload failed: ${error.message}`);
+        }
+    }
+
+    async getFileStream(storedPath: string): Promise<NodeJS.ReadableStream> {
+        try {
+            const command = new GetObjectCommand({
+                Bucket: this.bucket,
+                Key: storedPath,
+            });
+            const response = await this.client.send(command);
+            // AWS SDK v3 response.Body is a SDK stream, which can be piped
+            return response.Body as NodeJS.ReadableStream;
+        } catch (error: any) {
+            console.error('[S3] Get stream failed:', error.message);
+            throw new Error(`S3 get stream failed: ${error.message}`);
+        }
+    }
+
+    async getPreviewUrl(storedPath: string): Promise<string> {
+        try {
+            const command = new GetObjectCommand({
+                Bucket: this.bucket,
+                Key: storedPath,
+            });
+            // 默认有效期 1 小时
+            return await getS3SignedUrl(this.client, command, { expiresIn: 3600 });
+        } catch (error: any) {
+            console.error('[S3] Get preview URL failed:', error.message);
+            return '';
+        }
+    }
+
+    async deleteFile(storedPath: string): Promise<void> {
+        try {
+            const command = new DeleteObjectCommand({
+                Bucket: this.bucket,
+                Key: storedPath,
+            });
+            await this.client.send(command);
+        } catch (error: any) {
+            console.error('[S3] Delete failed:', error.message);
+            throw new Error(`S3 delete failed: ${error.message}`);
+        }
+    }
+
+    async getFileSize(storedPath: string): Promise<number> {
+        try {
+            const command = new HeadObjectCommand({
+                Bucket: this.bucket,
+                Key: storedPath,
+            });
+            const response = await this.client.send(command);
+            return response.ContentLength || 0;
+        } catch (error: any) {
+            console.error('[S3] Get file size failed:', error.message);
             return 0;
         }
     }
@@ -762,6 +863,17 @@ export class StorageManager {
                         config.bucket
                     );
                     this.providers.set(`aliyun_oss:${row.id}`, provider);
+                } else if (row.type === 's3') {
+                    provider = new S3StorageProvider(
+                        row.id,
+                        config.endpoint,
+                        config.region,
+                        config.accessKeyId,
+                        config.accessKeySecret,
+                        config.bucket,
+                        config.forcePathStyle || false
+                    );
+                    this.providers.set(`s3:${row.id}`, provider);
                 }
 
                 if (provider && row.is_active) {
@@ -924,6 +1036,23 @@ export class StorageManager {
 
         const oss = new AliyunOSSStorageProvider(targetId, region, accessKeyId, accessKeySecret, bucket);
         this.providers.set(`aliyun_oss:${targetId}`, oss);
+
+        return targetId;
+    }
+
+    async addS3Account(name: string, endpoint: string, region: string, accessKeyId: string, accessKeySecret: string, bucket: string, forcePathStyle: boolean = false) {
+        const config = JSON.stringify({ endpoint, region, accessKeyId, accessKeySecret, bucket, forcePathStyle });
+
+        const res = await query(
+            `INSERT INTO storage_accounts (type, name, config, is_active) 
+             VALUES ($1, $2, $3, $4) RETURNING id`,
+            ['s3', name, config, false]
+        );
+        const targetId = res.rows[0].id;
+        console.log(`[StorageManager] Added new S3 account: ${targetId}`);
+
+        const s3 = new S3StorageProvider(targetId, endpoint, region, accessKeyId, accessKeySecret, bucket, forcePathStyle);
+        this.providers.set(`s3:${targetId}`, s3);
 
         return targetId;
     }

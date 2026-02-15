@@ -8,6 +8,8 @@
         "start": "node dist/index.js"
     },
     "dependencies": {
+        "@aws-sdk/client-s3": "^3.990.0",
+        "@aws-sdk/s3-request-presigner": "^3.990.0",
         "ali-oss": "^6.23.0",
         "axios": "^1.13.4",
         "check-disk-space": "^3.4.0",

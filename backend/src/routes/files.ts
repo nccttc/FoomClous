@@ -85,7 +85,7 @@ router.get('/:id/preview', async (req: Request, res: Response) => {
 
         const file = result.rows[0];
 
-        if (file.source === 'onedrive' || file.source === 'aliyun_oss') {
+        if (file.source === 'onedrive' || file.source === 'aliyun_oss' || file.source === 's3') {
             try {
                 const { storageManager } = await import('../services/storage.js');
                 const provider = storageManager.getProvider(`${file.source}:${file.storage_account_id}`);
@@ -155,7 +155,7 @@ router.get('/:id/download-url', async (req: Request, res: Response) => {
         const file = result.rows[0];
 
         // 1. 云存储文件：获取临时下载链接
-        if (file.source === 'onedrive' || file.source === 'aliyun_oss') {
+        if (file.source === 'onedrive' || file.source === 'aliyun_oss' || file.source === 's3') {
             try {
                 const { storageManager } = await import('../services/storage.js');
                 const provider = storageManager.getProvider(`${file.source}:${file.storage_account_id}`);
@@ -196,7 +196,7 @@ router.get('/:id/download', async (req: Request, res: Response) => {
         const file = result.rows[0];
 
         // 处理云存储文件 (如果直接访问此接口，仍然尝试重定向)
-        if (file.source === 'onedrive' || file.source === 'aliyun_oss') {
+        if (file.source === 'onedrive' || file.source === 'aliyun_oss' || file.source === 's3') {
             try {
                 const { storageManager } = await import('../services/storage.js');
                 const provider = storageManager.getProvider(`${file.source}:${file.storage_account_id}`);
@@ -349,7 +349,7 @@ router.post('/batch-delete', async (req: Request, res: Response) => {
         // 2. 依次物理删除
         const storagePromises = uniqueFiles.map(async (file) => {
             try {
-                if (file.source === 'onedrive' || file.source === 'aliyun_oss') {
+                if (file.source === 'onedrive' || file.source === 'aliyun_oss' || file.source === 's3') {
                     const { storageManager } = await import('../services/storage.js');
                     const provider = storageManager.getProvider(`${file.source}:${file.storage_account_id}`);
                     await provider.deleteFile(file.path);

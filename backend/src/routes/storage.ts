@@ -292,6 +292,25 @@ router.post('/config/aliyun-oss', requireAuth, async (req: Request, res: Respons
     }
 });
 
+// 添加 S3 存储配置
+router.post('/config/s3', requireAuth, async (req: Request, res: Response) => {
+    try {
+        const { name, endpoint, region, accessKeyId, accessKeySecret, bucket, forcePathStyle } = req.body;
+
+        if (!name || !endpoint || !region || !accessKeyId || !accessKeySecret || !bucket) {
+            return res.status(400).json({ error: '缺少必要参数' });
+        }
+
+        const { storageManager } = await import('../services/storage.js');
+        const accountId = await storageManager.addS3Account(name, endpoint, region, accessKeyId, accessKeySecret, bucket, forcePathStyle || false);
+
+        res.json({ success: true, message: 'S3 存储账户已添加', accountId });
+    } catch (error) {
+        console.error('添加 S3 配置失败:', error);
+        res.status(500).json({ error: '添加 S3 配置失败' });
+    }
+});
+
 // 切换存储提供商或具体账户
 router.post('/switch', requireAuth, async (req: Request, res: Response) => {
     try {
@@ -301,7 +320,7 @@ router.post('/switch', requireAuth, async (req: Request, res: Response) => {
         if (provider === 'local') {
             await storageManager.switchToLocal();
             return res.json({ success: true, message: '已切换到本地存储' });
-        } else if (provider === 'onedrive' || provider === 'aliyun_oss') {
+        } else if (provider === 'onedrive' || provider === 'aliyun_oss' || provider === 's3') {
             if (accountId) {
                 await storageManager.switchAccount(accountId);
                 return res.json({ success: true, message: `已切换 ${provider} 账户` });

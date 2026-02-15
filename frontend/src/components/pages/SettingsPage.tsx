@@ -88,6 +88,16 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
     const [ossBucket, setOssBucket] = useState("");
     const [showOSSForm, setShowOSSForm] = useState(false);
 
+    // S3 Form State
+    const [s3AccountName, setS3AccountName] = useState("");
+    const [s3Endpoint, setS3Endpoint] = useState("");
+    const [s3Region, setS3Region] = useState("");
+    const [s3AccessKeyId, setS3AccessKeyId] = useState("");
+    const [s3AccessKeySecret, setS3AccessKeySecret] = useState("");
+    const [s3Bucket, setS3Bucket] = useState("");
+    const [s3ForcePathStyle, setS3ForcePathStyle] = useState(false);
+    const [showS3Form, setShowS3Form] = useState(false);
+
     // Load initial config
     useEffect(() => {
         const loadConfig = async () => {
@@ -105,13 +115,14 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
         loadConfig();
     }, []);
 
-    const handleSwitchProvider = async (provider: 'local' | 'onedrive' | 'aliyun_oss', accountId?: string) => {
+    const handleSwitchProvider = async (provider: 'local' | 'onedrive' | 'aliyun_oss' | 's3', accountId?: string) => {
         if (isSaving) return;
 
         // If switching to the same account/provider, do nothing
         if (provider === 'local' && config?.provider === 'local') return;
         if (provider === 'onedrive' && accountId === config?.activeAccountId) return;
         if (provider === 'aliyun_oss' && accountId === config?.activeAccountId) return;
+        if (provider === 's3' && accountId === config?.activeAccountId) return;
 
         // If switching to OneDrive and no accounts exist, show form
         const onedriveAccounts = config?.accounts.filter(a => a.type === 'onedrive') || [];
@@ -127,10 +138,18 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
             return;
         }
 
+        // If switching to S3 and no accounts exist, show form
+        const s3Accounts = config?.accounts.filter(a => a.type === 's3') || [];
+        if (provider === 's3' && s3Accounts.length === 0) {
+            setShowS3Form(true);
+            return;
+        }
+
         const providerNames = {
             'local': '本地存储',
             'onedrive': 'OneDrive',
-            'aliyun_oss': '阿里云 OSS'
+            'aliyun_oss': '阿里云 OSS',
+            's3': 'S3 兼容存储'
         };
         const providerName = providerNames[provider];
 
@@ -230,11 +249,36 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
             const data = await fileApi.getStorageConfig();
             setConfig(data);
             alert("阿里云 OSS 账户添加成功！");
-            setShowOSSForm(false); // Close form after successful save
-            // Optionally switch to this new account
-            // handleSwitchProvider('aliyun_oss', data.accounts.find(a => a.name === ossAccountName && a.type === 'aliyun_oss')?.id);
+            setShowOSSForm(false);
         } catch (error: any) {
             alert("添加阿里云 OSS 账户失败: " + error.message);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleSaveS3Config = async () => {
+        if (!s3AccountName || !s3Endpoint || !s3Region || !s3AccessKeyId || !s3AccessKeySecret || !s3Bucket) {
+            alert("请填写所有必填项");
+            return;
+        }
+        setIsSaving(true);
+        try {
+            await fileApi.addS3Account(
+                s3AccountName,
+                s3Endpoint,
+                s3Region,
+                s3AccessKeyId,
+                s3AccessKeySecret,
+                s3Bucket,
+                s3ForcePathStyle
+            );
+            const data = await fileApi.getStorageConfig();
+            setConfig(data);
+            alert("S3 兼容存储账户添加成功！");
+            setShowS3Form(false);
+        } catch (error: any) {
+            alert("添加 S3 兼容存储账户失败: " + error.message);
         } finally {
             setIsSaving(false);
         }
@@ -686,6 +730,213 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
 
                                 <div className="flex justify-end pt-2">
                                     <Button variant="ghost" onClick={() => setShowOSSForm(false)}>关闭</Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </SettingsSection>
+
+            {/* S3 Configuration Section */}
+            <SettingsSection title="S3 兼容存储设置">
+                <div className="p-4 bg-muted/20 border-b border-border/50">
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-lg bg-muted text-muted-foreground">
+                                <Database className="h-4 w-4" />
+                            </div>
+                            <div>
+                                <span className="text-sm font-medium">S3 兼容存储账户</span>
+                                <p className="text-xs text-muted-foreground">管理及切换多个 S3 (MinIO, Cloudflare R2, AWS S3 等) 存储源</p>
+                            </div>
+                        </div>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setShowS3Form(!showS3Form)}
+                        >
+                            {showS3Form ? "取消添加" : "添加新账户"}
+                        </Button>
+                    </div>
+
+                    <div className="space-y-2">
+                        {config?.accounts.filter(a => a.type === 's3').map((account) => (
+                            <div
+                                key={account.id}
+                                className={cn(
+                                    "flex items-center justify-between p-3 rounded-lg border transition-all",
+                                    account.is_active
+                                        ? "bg-primary/5 border-primary/20 ring-1 ring-primary/10"
+                                        : "bg-background border-border hover:border-border/80"
+                                )}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className={cn(
+                                        "h-2 w-2 rounded-full",
+                                        account.is_active ? "bg-primary animate-pulse" : "bg-muted-foreground/30"
+                                    )} />
+                                    <div>
+                                        <p className="text-sm font-medium">{account.name || "未命名账户"}</p>
+                                        <p className="text-[10px] text-muted-foreground font-mono opacity-60">{account.id}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {account.is_active ? (
+                                        <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-green-500/10 text-green-600 dark:text-green-400">
+                                            <CheckCircle className="h-3.5 w-3.5" />
+                                            <span className="text-xs font-semibold">正在使用</span>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                className="h-8 text-xs hover:bg-primary/10 hover:text-primary"
+                                                onClick={() => handleSwitchProvider('s3', account.id)}
+                                                disabled={isSaving}
+                                            >
+                                                切换到此账户
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                className="h-8 w-8 p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                                onClick={() => handleDeleteAccount(account.id, account.name)}
+                                                disabled={isSaving}
+                                            >
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                            </Button>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                        {config?.accounts.filter(a => a.type === 's3').length === 0 && !showS3Form && (
+                            <div className="text-center py-6 border border-dashed rounded-lg border-border/50">
+                                <p className="text-xs text-muted-foreground">尚未配置 S3 兼容存储账户</p>
+                                <Button
+                                    variant="link"
+                                    size="sm"
+                                    className="mt-1"
+                                    onClick={() => setShowS3Form(true)}
+                                >
+                                    立即添加
+                                </Button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <AnimatePresence>
+                    {showS3Form && (
+                        <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="bg-muted/30 border-t border-border/50"
+                        >
+                            <div className="p-6 space-y-6">
+                                <div className="space-y-4">
+                                    <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+                                        <Database className="h-4 w-4" />
+                                        <span>S3 兼容存储凭证信息</span>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground leading-relaxed">
+                                        支持 MinIO, Cloudflare R2, AWS S3 等。请确保已开启跨域访问 (CORS)。
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-2 md:col-span-2">
+                                        <label className="text-sm font-medium">账户显示名称</label>
+                                        <input
+                                            type="text"
+                                            value={s3AccountName}
+                                            onChange={e => setS3AccountName(e.target.value)}
+                                            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                            placeholder="例如：我的 MinIO 存储"
+                                        />
+                                    </div>
+                                    <div className="space-y-2 md:col-span-2">
+                                        <label className="text-sm font-medium">节点地址 (Endpoint)</label>
+                                        <input
+                                            type="text"
+                                            value={s3Endpoint}
+                                            onChange={e => setS3Endpoint(e.target.value)}
+                                            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                            placeholder="https://s3.amazonaws.com"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium">区域 (Region)</label>
+                                        <input
+                                            type="text"
+                                            value={s3Region}
+                                            onChange={e => setS3Region(e.target.value)}
+                                            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                            placeholder="us-east-1"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium">存储空间 (Bucket)</label>
+                                        <input
+                                            type="text"
+                                            value={s3Bucket}
+                                            onChange={e => setS3Bucket(e.target.value)}
+                                            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                            placeholder="my-s3-bucket"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium">AccessKey ID</label>
+                                        <input
+                                            type="text"
+                                            value={s3AccessKeyId}
+                                            onChange={e => setS3AccessKeyId(e.target.value)}
+                                            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium">AccessKey Secret</label>
+                                        <input
+                                            type="password"
+                                            value={s3AccessKeySecret}
+                                            onChange={e => setS3AccessKeySecret(e.target.value)}
+                                            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                        />
+                                    </div>
+                                    <div className="flex items-center gap-2 pt-2 md:col-span-2">
+                                        <input
+                                            type="checkbox"
+                                            id="forcePathStyle"
+                                            checked={s3ForcePathStyle}
+                                            onChange={e => setS3ForcePathStyle(e.target.checked)}
+                                            className="rounded border-border"
+                                        />
+                                        <label htmlFor="forcePathStyle" className="text-xs text-muted-foreground">
+                                            强制路径风格 (Force Path Style) - MinIO 或私有化部署建议勾选
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="space-y-0.5">
+                                            <h4 className="text-sm font-medium text-primary">保存配置</h4>
+                                            <p className="text-xs text-muted-foreground">保存后系统将尝试连接此 S3 账户。</p>
+                                        </div>
+                                        <Button
+                                            size="sm"
+                                            onClick={handleSaveS3Config}
+                                            disabled={isSaving || !s3AccessKeyId}
+                                        >
+                                            {isSaving ? "正在保存..." : "保存账户"}
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-end pt-2">
+                                    <Button variant="ghost" onClick={() => setShowS3Form(false)}>关闭</Button>
                                 </div>
                             </div>
                         </motion.div>
