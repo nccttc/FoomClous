@@ -4,6 +4,7 @@ import axios from 'axios';
 import OSS from 'ali-oss';
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl as getS3SignedUrl } from '@aws-sdk/s3-request-presigner';
+import { createClient, WebDAVClient } from 'webdav';
 import { query } from '../db/index.js';
 
 // 接口定义
@@ -290,6 +291,69 @@ export class S3StorageProvider implements IStorageProvider {
             return response.ContentLength || 0;
         } catch (error: any) {
             console.error('[S3] Get file size failed:', error.message);
+            return 0;
+        }
+    }
+}
+
+// WebDAV 存储实现
+export class WebDAVStorageProvider implements IStorageProvider {
+    name = 'webdav';
+    private client: WebDAVClient;
+
+    constructor(
+        public id: string,
+        private url: string,
+        private username?: string,
+        private password?: string
+    ) {
+        this.client = createClient(url, {
+            username: username,
+            password: password
+        });
+    }
+
+    async saveFile(tempPath: string, fileName: string): Promise<string> {
+        try {
+            const fileBuffer = fs.readFileSync(tempPath);
+            await this.client.putFileContents(`/${fileName}`, fileBuffer);
+            console.log('[WebDAV] Upload successful:', fileName);
+            return fileName;
+        } catch (error: any) {
+            console.error('[WebDAV] Upload failed:', error.message);
+            throw new Error(`WebDAV upload failed: ${error.message}`);
+        }
+    }
+
+    async getFileStream(storedPath: string): Promise<NodeJS.ReadableStream> {
+        try {
+            return this.client.createReadStream(`/${storedPath}`);
+        } catch (error: any) {
+            console.error('[WebDAV] Get stream failed:', error.message);
+            throw new Error(`WebDAV get stream failed: ${error.message}`);
+        }
+    }
+
+    async getPreviewUrl(storedPath: string): Promise<string> {
+        return '';
+    }
+
+    async deleteFile(storedPath: string): Promise<void> {
+        try {
+            await this.client.deleteFile(`/${storedPath}`);
+            console.log('[WebDAV] Delete successful:', storedPath);
+        } catch (error: any) {
+            console.error('[WebDAV] Delete failed:', error.message);
+            throw new Error(`WebDAV delete failed: ${error.message}`);
+        }
+    }
+
+    async getFileSize(storedPath: string): Promise<number> {
+        try {
+            const stat = await this.client.stat(`/${storedPath}`) as any;
+            return stat.size || 0;
+        } catch (error: any) {
+            console.error('[WebDAV] Get file size failed:', error.message);
             return 0;
         }
     }
@@ -874,6 +938,14 @@ export class StorageManager {
                         config.forcePathStyle || false
                     );
                     this.providers.set(`s3:${row.id}`, provider);
+                } else if (row.type === 'webdav') {
+                    provider = new WebDAVStorageProvider(
+                        row.id,
+                        config.url,
+                        config.username,
+                        config.password
+                    );
+                    this.providers.set(`webdav:${row.id}`, provider);
                 }
 
                 if (provider && row.is_active) {
@@ -1053,6 +1125,23 @@ export class StorageManager {
 
         const s3 = new S3StorageProvider(targetId, endpoint, region, accessKeyId, accessKeySecret, bucket, forcePathStyle);
         this.providers.set(`s3:${targetId}`, s3);
+
+        return targetId;
+    }
+
+    async addWebDAVAccount(name: string, url: string, username?: string, password?: string) {
+        const config = JSON.stringify({ url, username, password });
+
+        const res = await query(
+            `INSERT INTO storage_accounts (type, name, config, is_active) 
+             VALUES ($1, $2, $3, $4) RETURNING id`,
+            ['webdav', name, config, false]
+        );
+        const targetId = res.rows[0].id;
+        console.log(`[StorageManager] Added new WebDAV account: ${targetId}`);
+
+        const webdav = new WebDAVStorageProvider(targetId, url, username, password);
+        this.providers.set(`webdav:${targetId}`, webdav);
 
         return targetId;
     }

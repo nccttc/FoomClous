@@ -1,62 +1,73 @@
-# FoomClous 存储源配置指南
+# FoomClous 存储源配置指南 ☁️
 
-FoomClous 支持多种存储后端，您可以根据需求选择本地存储或云存储（OneDrive、阿里云 OSS）。
+FoomClous 支持多种存储后端。您可以根据对速度、容量和成本的需求，选择本地存储或云存储。
+
+---
 
 ## 1. 本地存储 (Local Storage)
 
-本地存储是默认的存储方式，文件直接保存在服务器硬盘上。
+文件直接保存在运行 FoomClous 的服务器硬盘上，速度最快，但受限于服务器磁盘大小。
 
-### 配置方法
-- **环境变量**:
-  - `UPLOAD_DIR`: 文件上传的基础目录（默认：`./data/uploads`）。
-  - `THUMBNAIL_DIR`: 缩略图生成的目录（默认：`./data/thumbnails`）。
-- **特点**: 无需额外配置，速度快，受限于服务器磁盘容量。
+- **配置**: 无需特殊操作。
+- **持久化**: 如果使用 Docker，请确保挂载了挂载卷（默认已集成在 `docker-compose.yml` 中）。
 
 ---
 
 ## 2. Microsoft OneDrive
 
-支持通过多账户管理功能连接一个或多个 OneDrive 账户。
+适合拥有 Office 365 订阅的用户，提供 1TB - 5TB 的廉价高速存储。
 
-### 获取凭据 (Azure Portal)
-1. 访问 [Azure Portal - App Registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade)。
-2. 注册新应用：
-   - **重定向 URI**: 设置为 Web 类型，地址通常为 `https://您的域名/api/storage/onedrive/callback`。
-3. 获取 **Client ID** 和 **Tenant ID**。
-4. 在“证书和密码”中创建新的 **Client Secret**。
-5. 在“API 权限”中添加 `Files.ReadWrite.All` 和 `offline_access`。
+### 获取凭据
+1. 访问 [Azure Portal](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade)。
+2. 创建“新注册”，**重定向 URI** 选择 `Web` 并填写：`https://您的域名/api/storage/onedrive/callback`。
+3. 获取 **Client ID** 和 **Tenant ID**（通常为 `common`）。
+4. 在“证书和密码”中生成 **Client Secret**。
 
-### 在 FoomClous 中配置
-1. 前往 **设置 -> 存储设置 -> OneDrive 账户**。
-2. 输入 **账户名称**、**Client ID**、**Client Secret**、**Tenant ID**（默认为 `common`）。
-3. 点击“添加并授权”，跳转至微软页面进行 OAuth 授权。
+### 开启功能
+- **设置 -> 存储源 -> OneDrive**，输入凭据并点击“保存并授权”。
 
 ---
 
-## 3. 阿里云 OSS (Aliyun Object Storage)
+## 3. S3 兼容存储 (AWS S3, MinIO, R2)
 
-支持将阿里云 OSS 作为高性能、高可靠的云存储后端。
+支持所有兼容 S3 协议的对象存储，如 Cloudflare R2, Backblaze B2, MinIO 等。
 
-### 获取凭据 (阿里云控制台)
-1. 登录 [阿里云控制台](https://oss.console.aliyun.com/)。
-2. 创建或进入现有的 **Bucket**。
-3. 获取 **Endpoint** / **Region** (如 `oss-cn-hangzhou`)。
-4. 在 AccessKey 管理中获取 **AccessKey ID** 和 **AccessKey Secret**。
-
-### 在 FoomClous 中配置
-1. 前往 **设置 -> 存储设置 -> 阿里云 OSS**。
-2. 输入以下信息：
-   - **名称**: 账户别名。
-   - **Region**: 所在的地域 ID (如 `oss-cn-shanghai` 或 `cn-shanghai`)。程序会自动提取地域部分。
-   - **AccessKey ID**: 阿里云身份凭证。
-   - **AccessKey Secret**: 阿里云身份密钥。
-   - **Bucket**: 存储桶名称。
-3. 点击“添加账户”。
+### 配置信息
+- **Endpoint**: 节点地址 (如 `https://s3.us-east-1.amazonaws.com`)。
+- **Region**: 区域 (如 `us-east-1`)。
+- **AccessKey / SecretKey**: 访问密钥。
+- **Bucket**: 存储桶名称。
+- **Force Path Style**: 如果使用 MinIO 或某些私有云，可能需要勾选。
 
 ---
 
-## 切换存储源
+## 4. WebDAV (坚果云, InfiniCLOUD)
 
-1. 在 **设置 -> 存储设置** 中，您可以看到所有已配置的账户。
-2. 点击账户旁边的 **“激活”** 按钮即可切换。
-3. 切换后，后续的新上传文件将保存至新激活的存储源中。旧文件仍保留在原存储源，且可以正常访问。
+最通用的网络存储协议。
+
+### 配置信息
+- **URL**: WebDAV 服务器地址 (如 `https://dav.jianguoyun.com/dav/`)。
+- **Username**: 登录账号。
+- **Password**: 应用专用口令（非登录密码）。
+
+---
+
+## 5. 阿里云 OSS
+
+国内用户推荐，响应速度极快。
+
+- **Region**: 所在的地域 ID (如 `oss-cn-shanghai`)。
+- **Credentials**: AccessKey ID & Secret。
+- **Bucket**: 存储桶名称。
+
+---
+
+## 🔄 如何切换活动账户？
+
+1. 进入 **设置 -> 存储源设置**。
+2. 在列表中找到您想使用的账户。
+3. 点击 **“切换到此账户”**。
+4. **提示**：新上传的文件会存入新账户，已上传的文件仍会通过原路径访问。
+
+---
+[返回文档中心](./README.md)

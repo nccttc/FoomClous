@@ -23,7 +23,8 @@
         "pg": "^8.13.1",
         "sharp": "^0.33.5",
         "telegram": "^2.26.22",
-        "uuid": "^11.0.5"
+        "uuid": "^11.0.5",
+        "webdav": "^5.9.0"
     },
     "devDependencies": {
         "@types/ali-oss": "^6.23.3",

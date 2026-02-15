@@ -85,15 +85,27 @@ router.get('/:id/preview', async (req: Request, res: Response) => {
 
         const file = result.rows[0];
 
-        if (file.source === 'onedrive' || file.source === 'aliyun_oss' || file.source === 's3') {
+        if (file.source === 'onedrive' || file.source === 'aliyun_oss' || file.source === 's3' || file.source === 'webdav') {
             try {
                 const { storageManager } = await import('../services/storage.js');
                 const provider = storageManager.getProvider(`${file.source}:${file.storage_account_id}`);
                 const url = await provider.getPreviewUrl(file.path);
-                res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-                return res.redirect(url);
+
+                if (url) {
+                    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+                    return res.redirect(url);
+                } else {
+                    // 如果提供商不支持预览 URL（如 WebDAV），则流式传输
+                    const stream = await provider.getFileStream(file.path);
+                    res.set({
+                        'Content-Type': file.mime_type || 'application/octet-stream',
+                        'Cache-Control': 'public, max-age=86400',
+                    });
+                    (stream as any).pipe(res);
+                    return;
+                }
             } catch (err) {
-                console.error(`获取 ${file.source} 预览链接失败:`, err);
+                console.error(`获取 ${file.source} 预览链接/流失败:`, err);
                 return res.status(500).json({ error: '获取预览失败' });
             }
         }
@@ -155,12 +167,18 @@ router.get('/:id/download-url', async (req: Request, res: Response) => {
         const file = result.rows[0];
 
         // 1. 云存储文件：获取临时下载链接
-        if (file.source === 'onedrive' || file.source === 'aliyun_oss' || file.source === 's3') {
+        if (file.source === 'onedrive' || file.source === 'aliyun_oss' || file.source === 's3' || file.source === 'webdav') {
             try {
                 const { storageManager } = await import('../services/storage.js');
                 const provider = storageManager.getProvider(`${file.source}:${file.storage_account_id}`);
                 const url = await provider.getPreviewUrl(file.path);
-                return res.json({ url });
+                if (url) {
+                    return res.json({ url });
+                } else {
+                    // 如果不支持直链，还是返回 API 代理下载 URL
+                    const signedUrl = getSignedUrl(file.id, 'download', 3600);
+                    return res.json({ url: signedUrl, isRelative: true });
+                }
             } catch (err) {
                 console.error(`获取 ${file.source} 下载链接失败:`, err);
                 return res.status(500).json({ error: `无法获取 ${file.source} 下载链接` });
@@ -195,16 +213,24 @@ router.get('/:id/download', async (req: Request, res: Response) => {
 
         const file = result.rows[0];
 
-        // 处理云存储文件 (如果直接访问此接口，仍然尝试重定向)
-        if (file.source === 'onedrive' || file.source === 'aliyun_oss' || file.source === 's3') {
+        // 处理云存储文件 (如果直接访问此接口，仍然尝试重定向或流式传输)
+        if (file.source === 'onedrive' || file.source === 'aliyun_oss' || file.source === 's3' || file.source === 'webdav') {
             try {
                 const { storageManager } = await import('../services/storage.js');
                 const provider = storageManager.getProvider(`${file.source}:${file.storage_account_id}`);
                 const url = await provider.getPreviewUrl(file.path);
-                res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-                return res.redirect(url);
+
+                if (url) {
+                    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+                    return res.redirect(url);
+                } else {
+                    const stream = await provider.getFileStream(file.path);
+                    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.name)}"`);
+                    (stream as any).pipe(res);
+                    return;
+                }
             } catch (err) {
-                console.error(`获取 ${file.source} 下载链接失败:`, err);
+                console.error(`获取 ${file.source} 下载链接/流失败:`, err);
                 return res.status(500).json({ error: '无法下载文件' });
             }
         }
@@ -279,7 +305,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
 
         const file = result.rows[0];
 
-        if (file.source === 'onedrive' || file.source === 'aliyun_oss') {
+        if (file.source === 'onedrive' || file.source === 'aliyun_oss' || file.source === 's3' || file.source === 'webdav') {
             try {
                 const { storageManager } = await import('../services/storage.js');
                 const provider = storageManager.getProvider(`${file.source}:${file.storage_account_id}`);
@@ -349,7 +375,7 @@ router.post('/batch-delete', async (req: Request, res: Response) => {
         // 2. 依次物理删除
         const storagePromises = uniqueFiles.map(async (file) => {
             try {
-                if (file.source === 'onedrive' || file.source === 'aliyun_oss' || file.source === 's3') {
+                if (file.source === 'onedrive' || file.source === 'aliyun_oss' || file.source === 's3' || file.source === 'webdav') {
                     const { storageManager } = await import('../services/storage.js');
                     const provider = storageManager.getProvider(`${file.source}:${file.storage_account_id}`);
                     await provider.deleteFile(file.path);

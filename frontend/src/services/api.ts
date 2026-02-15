@@ -381,8 +381,23 @@ class FileAPI {
         return response.json();
     }
 
+    // 添加 WebDAV 账户
+    async addWebDAVAccount(name: string, url: string, username?: string, password?: string): Promise<{ success: boolean; message: string; accountId: string }> {
+        const response = await fetch(`${API_BASE}/api/storage/config/webdav`, {
+            method: 'POST',
+            headers: getHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ name, url, username, password }),
+        });
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || '添加 WebDAV 账户失败');
+        }
+        return response.json();
+    }
+
     // 切换存储提供商或账户
-    async switchStorageProvider(provider: 'local' | 'onedrive' | 'aliyun_oss' | 's3', accountId?: string): Promise<{ success: boolean; message: string }> {
+    async switchStorageProvider(provider: 'local' | 'onedrive' | 'aliyun_oss' | 's3' | 'webdav', accountId?: string): Promise<{ success: boolean; message: string }> {
         const response = await fetch(`${API_BASE}/api/storage/switch`, {
             method: 'POST',
             headers: getHeaders({ 'Content-Type': 'application/json' }),

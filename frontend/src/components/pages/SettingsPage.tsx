@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
-import { HardDrive, ChevronRight, Moon, Sun, Monitor, Palette, Globe, Cloud, Server, Database, CheckCircle, Trash2 } from "lucide-react";
+import { HardDrive, ChevronRight, Moon, Sun, Monitor, Palette, Globe, Cloud, Server, Database, CheckCircle, Trash2, Network } from "lucide-react";
 import { Button } from "../ui/Button";
 import { LanguageToggle } from "../ui/LanguageToggle";
 import { useTheme } from "../../hooks/useTheme";
@@ -98,6 +98,13 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
     const [s3ForcePathStyle, setS3ForcePathStyle] = useState(false);
     const [showS3Form, setShowS3Form] = useState(false);
 
+    // WebDAV Form State
+    const [webdavAccountName, setWebdavAccountName] = useState("");
+    const [webdavUrl, setWebdavUrl] = useState("");
+    const [webdavUsername, setWebdavUsername] = useState("");
+    const [webdavPassword, setWebdavPassword] = useState("");
+    const [showWebDAVForm, setShowWebDAVForm] = useState(false);
+
     // Load initial config
     useEffect(() => {
         const loadConfig = async () => {
@@ -115,7 +122,7 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
         loadConfig();
     }, []);
 
-    const handleSwitchProvider = async (provider: 'local' | 'onedrive' | 'aliyun_oss' | 's3', accountId?: string) => {
+    const handleSwitchProvider = async (provider: 'local' | 'onedrive' | 'aliyun_oss' | 's3' | 'webdav', accountId?: string) => {
         if (isSaving) return;
 
         // If switching to the same account/provider, do nothing
@@ -123,6 +130,7 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
         if (provider === 'onedrive' && accountId === config?.activeAccountId) return;
         if (provider === 'aliyun_oss' && accountId === config?.activeAccountId) return;
         if (provider === 's3' && accountId === config?.activeAccountId) return;
+        if (provider === 'webdav' && accountId === config?.activeAccountId) return;
 
         // If switching to OneDrive and no accounts exist, show form
         const onedriveAccounts = config?.accounts.filter(a => a.type === 'onedrive') || [];
@@ -145,11 +153,19 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
             return;
         }
 
+        // If switching to WebDAV and no accounts exist, show form
+        const webdavAccounts = config?.accounts.filter(a => a.type === 'webdav') || [];
+        if (provider === 'webdav' && webdavAccounts.length === 0) {
+            setShowWebDAVForm(true);
+            return;
+        }
+
         const providerNames = {
             'local': '本地存储',
             'onedrive': 'OneDrive',
             'aliyun_oss': '阿里云 OSS',
-            's3': 'S3 兼容存储'
+            's3': 'S3 兼容存储',
+            'webdav': 'WebDAV 存储'
         };
         const providerName = providerNames[provider];
 
@@ -279,6 +295,30 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
             setShowS3Form(false);
         } catch (error: any) {
             alert("添加 S3 兼容存储账户失败: " + error.message);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleSaveWebDAVConfig = async () => {
+        if (!webdavAccountName || !webdavUrl) {
+            alert("请填写账户名称和 URL");
+            return;
+        }
+        setIsSaving(true);
+        try {
+            await fileApi.addWebDAVAccount(
+                webdavAccountName,
+                webdavUrl,
+                webdavUsername,
+                webdavPassword
+            );
+            const data = await fileApi.getStorageConfig();
+            setConfig(data);
+            alert("WebDAV 存储账户添加成功！");
+            setShowWebDAVForm(false);
+        } catch (error: any) {
+            alert("添加 WebDAV 存储账户失败: " + error.message);
         } finally {
             setIsSaving(false);
         }
@@ -944,7 +984,182 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
                 </AnimatePresence>
             </SettingsSection>
 
-            {/* Storage Stats Section - Real Data */}
+            {/* WebDAV Configuration Section */}
+            <SettingsSection title="WebDAV 存储设置">
+                <div className="p-4 bg-muted/20 border-b border-border/50">
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-lg bg-muted text-muted-foreground">
+                                <Network className="h-4 w-4" />
+                            </div>
+                            <div>
+                                <span className="text-sm font-medium">WebDAV 存储账户</span>
+                                <p className="text-xs text-muted-foreground">管理及切换多个 WebDAV (坚果云, InfiniCLOUD, Synology 等) 存储源</p>
+                            </div>
+                        </div>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setShowWebDAVForm(!showWebDAVForm)}
+                        >
+                            {showWebDAVForm ? "取消添加" : "添加新账户"}
+                        </Button>
+                    </div>
+
+                    <div className="space-y-2">
+                        {config?.accounts.filter(a => a.type === 'webdav').map((account) => (
+                            <div
+                                key={account.id}
+                                className={cn(
+                                    "flex items-center justify-between p-3 rounded-lg border transition-all",
+                                    account.is_active
+                                        ? "bg-primary/5 border-primary/20 ring-1 ring-primary/10"
+                                        : "bg-background border-border hover:border-border/80"
+                                )}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className={cn(
+                                        "h-2 w-2 rounded-full",
+                                        account.is_active ? "bg-primary animate-pulse" : "bg-muted-foreground/30"
+                                    )} />
+                                    <div>
+                                        <p className="text-sm font-medium">{account.name || "未命名账户"}</p>
+                                        <p className="text-[10px] text-muted-foreground font-mono opacity-60">{account.id}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {account.is_active ? (
+                                        <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-green-500/10 text-green-600 dark:text-green-400">
+                                            <CheckCircle className="h-3.5 w-3.5" />
+                                            <span className="text-xs font-semibold">正在使用</span>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                className="h-8 text-xs hover:bg-primary/10 hover:text-primary"
+                                                onClick={() => handleSwitchProvider('webdav', account.id)}
+                                                disabled={isSaving}
+                                            >
+                                                切换到此账户
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                className="h-8 w-8 p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                                onClick={() => handleDeleteAccount(account.id, account.name)}
+                                                disabled={isSaving}
+                                            >
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                            </Button>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                        {config?.accounts.filter(a => a.type === 'webdav').length === 0 && !showWebDAVForm && (
+                            <div className="text-center py-6 border border-dashed rounded-lg border-border/50">
+                                <p className="text-xs text-muted-foreground">尚未配置 WebDAV 存储账户</p>
+                                <Button
+                                    variant="link"
+                                    size="sm"
+                                    className="mt-1"
+                                    onClick={() => setShowWebDAVForm(true)}
+                                >
+                                    立即添加
+                                </Button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <AnimatePresence>
+                    {showWebDAVForm && (
+                        <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="bg-muted/30 border-t border-border/50"
+                        >
+                            <div className="p-6 space-y-6">
+                                <div className="space-y-4">
+                                    <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+                                        <Network className="h-4 w-4" />
+                                        <span>WebDAV 凭证信息</span>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground leading-relaxed">
+                                        请提供您的 WebDAV 服务器地址及登录凭证。
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-2 md:col-span-2">
+                                        <label className="text-sm font-medium">账户显示名称</label>
+                                        <input
+                                            type="text"
+                                            value={webdavAccountName}
+                                            onChange={e => setWebdavAccountName(e.target.value)}
+                                            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                            placeholder="例如：我的坚果云"
+                                        />
+                                    </div>
+                                    <div className="space-y-2 md:col-span-2">
+                                        <label className="text-sm font-medium">服务器 URL</label>
+                                        <input
+                                            type="text"
+                                            value={webdavUrl}
+                                            onChange={e => setWebdavUrl(e.target.value)}
+                                            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                            placeholder="https://dav.jianguoyun.com/dav/"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium">用户名 (可选)</label>
+                                        <input
+                                            type="text"
+                                            value={webdavUsername}
+                                            onChange={e => setWebdavUsername(e.target.value)}
+                                            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                            placeholder="WebDAV 用户名"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium">密码 / 应用口令 (可选)</label>
+                                        <input
+                                            type="password"
+                                            value={webdavPassword}
+                                            onChange={e => setWebdavPassword(e.target.value)}
+                                            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                            placeholder="WebDAV 密码"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="space-y-0.5">
+                                            <h4 className="text-sm font-medium text-primary">保存配置</h4>
+                                            <p className="text-xs text-muted-foreground">保存后系统将尝试连接此 WebDAV 账户。</p>
+                                        </div>
+                                        <Button
+                                            size="sm"
+                                            onClick={handleSaveWebDAVConfig}
+                                            disabled={isSaving || !webdavUrl}
+                                        >
+                                            {isSaving ? "正在保存..." : "保存账户"}
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-end pt-2">
+                                    <Button variant="ghost" onClick={() => setShowWebDAVForm(false)}>关闭</Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </SettingsSection>
             <SettingsSection title={t("settings.storage.title")}>
                 <div className="p-6 space-y-6">
                     {storageStats ? (

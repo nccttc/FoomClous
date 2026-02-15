@@ -311,6 +311,25 @@ router.post('/config/s3', requireAuth, async (req: Request, res: Response) => {
     }
 });
 
+// 添加 WebDAV 存储配置
+router.post('/config/webdav', requireAuth, async (req: Request, res: Response) => {
+    try {
+        const { name, url, username, password } = req.body;
+
+        if (!name || !url) {
+            return res.status(400).json({ error: '缺少必要参数 (名称和 URL)' });
+        }
+
+        const { storageManager } = await import('../services/storage.js');
+        const accountId = await storageManager.addWebDAVAccount(name, url, username, password);
+
+        res.json({ success: true, message: 'WebDAV 存储账户已添加', accountId });
+    } catch (error) {
+        console.error('添加 WebDAV 配置失败:', error);
+        res.status(500).json({ error: '添加 WebDAV 配置失败' });
+    }
+});
+
 // 切换存储提供商或具体账户
 router.post('/switch', requireAuth, async (req: Request, res: Response) => {
     try {
@@ -320,7 +339,7 @@ router.post('/switch', requireAuth, async (req: Request, res: Response) => {
         if (provider === 'local') {
             await storageManager.switchToLocal();
             return res.json({ success: true, message: '已切换到本地存储' });
-        } else if (provider === 'onedrive' || provider === 'aliyun_oss' || provider === 's3') {
+        } else if (provider === 'onedrive' || provider === 'aliyun_oss' || provider === 's3' || provider === 'webdav') {
             if (accountId) {
                 await storageManager.switchAccount(accountId);
                 return res.json({ success: true, message: `已切换 ${provider} 账户` });
