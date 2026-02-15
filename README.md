@@ -13,4 +13,3 @@
 
 ---
 
-*本文档由 FoomClous 自动生成并同步至 GitHub Pages。*
