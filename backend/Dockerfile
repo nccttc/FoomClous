@@ -6,7 +6,6 @@ WORKDIR /app
 # 复制依赖文件
 # 复制依赖文件
 COPY package*.json ./
-RUN npm config set registry https://registry.npmmirror.com
 RUN npm install
 
 # 复制源代码并构建
@@ -24,7 +23,6 @@ RUN apk add --no-cache vips-dev ffmpeg
 
 # 复制依赖
 COPY package*.json ./
-RUN npm config set registry https://registry.npmmirror.com
 RUN npm install --omit=dev
 
 # 复制构建产物
