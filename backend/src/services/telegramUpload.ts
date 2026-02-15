@@ -896,7 +896,7 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
                     await runStatusAction(message.chatId, async () => {
                         await client.editMessage(message.chatId!, {
                             message: statusMsg!.id,
-                            text: `✅ 文件上传成功!\n${generateProgressBar(1, 1)}\n\n📄 文件名: ${finalFileName}\n📦 大小: ${formatBytes(actualSize)}\n🏷️ 类型: ${fileType}\n📍 存储: ${provider.name === 'onedrive' ? '☁️ OneDrive' : '💾 本地'}`,
+                            text: `✅ 文件上传成功!\n${generateProgressBar(1, 1)}\n\n📄 文件名: ${finalFileName}\n📦 大小: ${formatBytes(actualSize)}\n🏷️ 类型: ${fileType}\n📍 存储: ${provider.name === 'onedrive' ? '☁️ OneDrive' : (provider.name === 'aliyun_oss' ? '☁️ 阿里云 OSS' : '💾 本地')}`,
                         });
                     });
                 }

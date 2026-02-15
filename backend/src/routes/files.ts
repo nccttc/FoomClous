@@ -85,15 +85,15 @@ router.get('/:id/preview', async (req: Request, res: Response) => {
 
         const file = result.rows[0];
 
-        if (file.source === 'onedrive') {
+        if (file.source === 'onedrive' || file.source === 'aliyun_oss') {
             try {
                 const { storageManager } = await import('../services/storage.js');
-                const provider = storageManager.getProvider(`onedrive:${file.storage_account_id}`);
+                const provider = storageManager.getProvider(`${file.source}:${file.storage_account_id}`);
                 const url = await provider.getPreviewUrl(file.path);
                 res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
                 return res.redirect(url);
             } catch (err) {
-                console.error('获取 OneDrive 预览链接失败:', err);
+                console.error(`获取 ${file.source} 预览链接失败:`, err);
                 return res.status(500).json({ error: '获取预览失败' });
             }
         }
@@ -154,16 +154,16 @@ router.get('/:id/download-url', async (req: Request, res: Response) => {
 
         const file = result.rows[0];
 
-        // 1. OneDrive 文件：获取微软的临时下载链接
-        if (file.source === 'onedrive') {
+        // 1. 云存储文件：获取临时下载链接
+        if (file.source === 'onedrive' || file.source === 'aliyun_oss') {
             try {
                 const { storageManager } = await import('../services/storage.js');
-                const provider = storageManager.getProvider(`onedrive:${file.storage_account_id}`);
+                const provider = storageManager.getProvider(`${file.source}:${file.storage_account_id}`);
                 const url = await provider.getPreviewUrl(file.path);
                 return res.json({ url });
             } catch (err) {
-                console.error('获取 OneDrive 下载链接失败:', err);
-                return res.status(500).json({ error: '无法获取 OneDrive 下载链接' });
+                console.error(`获取 ${file.source} 下载链接失败:`, err);
+                return res.status(500).json({ error: `无法获取 ${file.source} 下载链接` });
             }
         }
 
@@ -195,16 +195,16 @@ router.get('/:id/download', async (req: Request, res: Response) => {
 
         const file = result.rows[0];
 
-        // 处理 OneDrive 文件 (如果直接访问此接口，仍然尝试重定向)
-        if (file.source === 'onedrive') {
+        // 处理云存储文件 (如果直接访问此接口，仍然尝试重定向)
+        if (file.source === 'onedrive' || file.source === 'aliyun_oss') {
             try {
                 const { storageManager } = await import('../services/storage.js');
-                const provider = storageManager.getProvider(`onedrive:${file.storage_account_id}`);
+                const provider = storageManager.getProvider(`${file.source}:${file.storage_account_id}`);
                 const url = await provider.getPreviewUrl(file.path);
                 res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
                 return res.redirect(url);
             } catch (err) {
-                console.error('获取 OneDrive 下载链接失败:', err);
+                console.error(`获取 ${file.source} 下载链接失败:`, err);
                 return res.status(500).json({ error: '无法下载文件' });
             }
         }
@@ -279,13 +279,13 @@ router.delete('/:id', async (req: Request, res: Response) => {
 
         const file = result.rows[0];
 
-        if (file.source === 'onedrive') {
+        if (file.source === 'onedrive' || file.source === 'aliyun_oss') {
             try {
                 const { storageManager } = await import('../services/storage.js');
-                const provider = storageManager.getProvider(`onedrive:${file.storage_account_id}`);
+                const provider = storageManager.getProvider(`${file.source}:${file.storage_account_id}`);
                 await provider.deleteFile(file.path);
             } catch (err) {
-                console.error('OneDrive 文件删除失败 (可能已不存在):', err);
+                console.error(`${file.source} 文件删除失败 (可能已不存在):`, err);
             }
         } else {
             // 删除实际文件（使用数据库中存储的完整路径）
@@ -349,9 +349,9 @@ router.post('/batch-delete', async (req: Request, res: Response) => {
         // 2. 依次物理删除
         const storagePromises = uniqueFiles.map(async (file) => {
             try {
-                if (file.source === 'onedrive') {
+                if (file.source === 'onedrive' || file.source === 'aliyun_oss') {
                     const { storageManager } = await import('../services/storage.js');
-                    const provider = storageManager.getProvider(`onedrive:${file.storage_account_id}`);
+                    const provider = storageManager.getProvider(`${file.source}:${file.storage_account_id}`);
                     await provider.deleteFile(file.path);
                 } else {
                     const filePath = file.path || path.join(UPLOAD_DIR, file.stored_name);
