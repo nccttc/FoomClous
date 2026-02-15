@@ -27,22 +27,39 @@ export const BulkActionToolbar = ({
     const [copySuccess, setCopySuccess] = useState(false);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+    const [generatedLink, setGeneratedLink] = useState<string | null>(null);
+
     // Share is only available when exactly one item is selected
     const canShare = selectedFilesCount + selectedFoldersCount === 1;
 
     const handleShareClick = () => {
         if (showShareSettings) {
             setShowShareSettings(false);
+            setGeneratedLink(null);
             setErrorMsg(null);
         } else {
             setShowShareSettings(true);
             setExpiration("");
             setPassword("");
+            setGeneratedLink(null);
             setErrorMsg(null);
         }
     };
 
     const handleCopyLink = async () => {
+        // If we already have a generated link, just copy it
+        if (generatedLink) {
+            try {
+                await navigator.clipboard.writeText(generatedLink);
+                setCopySuccess(true);
+                setTimeout(() => setCopySuccess(false), 2000);
+            } catch (err) {
+                console.error("Manual copy failed", err);
+                setErrorMsg("复制失败，请手动选中链接复制");
+            }
+            return;
+        }
+
         setIsCopying(true);
         setErrorMsg(null);
         try {
@@ -77,10 +94,15 @@ export const BulkActionToolbar = ({
 
             const link = await onShare(password, formattedExpiration);
             if (link) {
-                await navigator.clipboard.writeText(link);
-                setCopySuccess(true);
-                setTimeout(() => setCopySuccess(false), 2000);
-                setTimeout(() => setShowShareSettings(false), 3000); // Auto close after success
+                setGeneratedLink(link);
+                try {
+                    await navigator.clipboard.writeText(link);
+                    setCopySuccess(true);
+                    setTimeout(() => setCopySuccess(false), 2000);
+                } catch (err) {
+                    console.warn("Auto-copy failed, showing link for manual copy", err);
+                    // Don't show error message, just let user see the link
+                }
             }
         } catch (err: any) {
             console.error("Copy failed", err);
@@ -165,60 +187,94 @@ export const BulkActionToolbar = ({
                                     className="overflow-hidden mt-2"
                                 >
                                     <div className="bg-white dark:bg-zinc-900 border border-border shadow-xl rounded-xl p-4 flex flex-col gap-4">
-                                        <div className="flex items-start md:items-center flex-col md:flex-row gap-4">
-                                            {/* Expiration Input */}
-                                            <div className="flex-1 w-full relative group">
-                                                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors">
-                                                    <Calendar className="h-4 w-4" />
-                                                </div>
-                                                <input
-                                                    type="text"
-                                                    value={expiration}
-                                                    onChange={(e) => setExpiration(e.target.value)}
-                                                    placeholder="YYYY/MM/DD (过期时间)"
-                                                    className="w-full h-9 pl-9 pr-3 rounded-lg border border-border bg-background/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all hover:bg-background"
-                                                />
-                                            </div>
 
-                                            {/* Password Input */}
-                                            <div className="flex-1 w-full relative group">
-                                                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors">
-                                                    <Lock className="h-4 w-4" />
+                                        {!generatedLink ? (
+                                            <div className="flex items-start md:items-center flex-col md:flex-row gap-4">
+                                                {/* Expiration Input */}
+                                                <div className="flex-1 w-full relative group">
+                                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors">
+                                                        <Calendar className="h-4 w-4" />
+                                                    </div>
+                                                    <input
+                                                        type="text"
+                                                        value={expiration}
+                                                        onChange={(e) => setExpiration(e.target.value)}
+                                                        placeholder="YYYY/MM/DD (过期时间)"
+                                                        className="w-full h-9 pl-9 pr-3 rounded-lg border border-border bg-background/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all hover:bg-background"
+                                                    />
                                                 </div>
-                                                <input
-                                                    type="text"
-                                                    value={password}
-                                                    onChange={(e) => setPassword(e.target.value)}
-                                                    placeholder="设置访问密码 (可选)"
-                                                    className="w-full h-9 pl-9 pr-3 rounded-lg border border-border bg-background/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all hover:bg-background"
-                                                />
-                                            </div>
 
-                                            {/* Copy Button */}
-                                            <Button
-                                                size="sm"
-                                                className={`h-9 min-w-[100px] shrink-0 font-medium transition-all ${copySuccess ? 'bg-green-500 hover:bg-green-600 text-white' : ''}`}
-                                                onClick={handleCopyLink}
-                                                disabled={isCopying}
-                                            >
-                                                {isCopying ? (
-                                                    <span className="flex items-center gap-2">
-                                                        <div className="h-3 w-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
-                                                        生成中...
-                                                    </span>
-                                                ) : copySuccess ? (
-                                                    <span className="flex items-center gap-2">
-                                                        <Check className="h-4 w-4" />
-                                                        已复制
-                                                    </span>
-                                                ) : (
-                                                    <span className="flex items-center gap-2">
-                                                        <Copy className="h-4 w-4" />
-                                                        复制链接
-                                                    </span>
-                                                )}
-                                            </Button>
-                                        </div>
+                                                {/* Password Input */}
+                                                <div className="flex-1 w-full relative group">
+                                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors">
+                                                        <Lock className="h-4 w-4" />
+                                                    </div>
+                                                    <input
+                                                        type="text"
+                                                        value={password}
+                                                        onChange={(e) => setPassword(e.target.value)}
+                                                        placeholder="设置访问密码 (可选)"
+                                                        className="w-full h-9 pl-9 pr-3 rounded-lg border border-border bg-background/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all hover:bg-background"
+                                                    />
+                                                </div>
+
+                                                {/* Copy/Generate Button */}
+                                                <Button
+                                                    size="sm"
+                                                    className={`h-9 min-w-[100px] shrink-0 font-medium transition-all ${copySuccess ? 'bg-green-500 hover:bg-green-600 text-white' : ''}`}
+                                                    onClick={handleCopyLink}
+                                                    disabled={isCopying}
+                                                >
+                                                    {isCopying ? (
+                                                        <span className="flex items-center gap-2">
+                                                            <div className="h-3 w-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                                                            生成中...
+                                                        </span>
+                                                    ) : (
+                                                        <span className="flex items-center gap-2">
+                                                            <Copy className="h-4 w-4" />
+                                                            生成链接
+                                                        </span>
+                                                    )}
+                                                </Button>
+                                            </div>
+                                        ) : (
+                                            <div className="flex flex-col gap-3">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="flex-1 relative group">
+                                                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors text-primary">
+                                                            <Share2 className="h-4 w-4" />
+                                                        </div>
+                                                        <input
+                                                            type="text"
+                                                            value={generatedLink}
+                                                            readOnly
+                                                            className="w-full h-9 pl-9 pr-3 rounded-lg border border-primary/30 bg-primary/5 text-sm text-primary font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 hover:bg-primary/10 select-all"
+                                                        />
+                                                    </div>
+                                                    <Button
+                                                        size="sm"
+                                                        className={`h-9 min-w-[100px] shrink-0 font-medium transition-all ${copySuccess ? 'bg-green-500 hover:bg-green-600 text-white' : ''}`}
+                                                        onClick={handleCopyLink}
+                                                    >
+                                                        {copySuccess ? (
+                                                            <span className="flex items-center gap-2">
+                                                                <Check className="h-4 w-4" />
+                                                                已复制
+                                                            </span>
+                                                        ) : (
+                                                            <span className="flex items-center gap-2">
+                                                                <Copy className="h-4 w-4" />
+                                                                复制
+                                                            </span>
+                                                        )}
+                                                    </Button>
+                                                </div>
+                                                <div className="text-[10px] text-green-600 dark:text-green-400 px-1 font-medium">
+                                                    ✓ 分享链接已生成，请复制使用
+                                                </div>
+                                            </div>
+                                        )}
 
                                         {/* Error Message */}
                                         {errorMsg && (
@@ -231,9 +287,11 @@ export const BulkActionToolbar = ({
                                             </motion.div>
                                         )}
 
-                                        <div className="text-[10px] text-muted-foreground/60 px-1">
-                                            * 如果 OneDrive 账户不支持密码/日期设置，请留空直接生成
-                                        </div>
+                                        {!generatedLink && (
+                                            <div className="text-[10px] text-muted-foreground/60 px-1">
+                                                * 如果 OneDrive 账户不支持密码/日期设置，请留空直接生成
+                                            </div>
+                                        )}
                                     </div>
                                 </motion.div>
                             )}
