@@ -10,7 +10,8 @@
         "dropTitle": "点击或拖拽文件上传",
         "dropActive": "释放文件以上传",
         "dropSubtitle": "SVG, PNG, JPG 或 GIF (最大 800x400px)",
-        "release": "释放以上传"
+        "release": "释放以上传",
+        "syncing": "服务器正在上传到 {{source}}..."
     },
     "sidebar": {
         "files": "我的文件",

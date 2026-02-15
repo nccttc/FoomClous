@@ -17,6 +17,7 @@ import { FileMenu } from "./components/ui/FileMenu";
 import { DeleteAlert } from "./components/ui/DeleteAlert";
 import { FolderPromptModal } from "./components/ui/FolderPromptModal";
 import { UploadQueueModal, type QueueItem } from "./components/ui/UploadQueueModal";
+import { Notification, type NotificationType } from "./components/ui/Notification";
 import { fileApi, type FileData, type StorageStats as StorageStatsType } from "./services/api";
 import { authService } from "./services/auth";
 
@@ -34,6 +35,18 @@ function App() {
   const [isQueueModalOpen, setIsQueueModalOpen] = useState(false);
 
   const [storageStats, setStorageStats] = useState<StorageStatsType | null>(null);
+  const [storageProvider, setStorageProvider] = useState<string>("local");
+
+  // 通知状态
+  const [notification, setNotification] = useState<{
+    show: boolean;
+    message: string;
+    type: NotificationType;
+  }>({
+    show: false,
+    message: "",
+    type: "info"
+  });
 
   const { t } = useTranslation();
   const [currentCategory, setCurrentCategory] = useState("all");
@@ -138,13 +151,25 @@ function App() {
     }
   }, [isAuthenticated]);
 
+  // 加载存储配置 (获取当前提供商)
+  const loadStorageConfig = useCallback(async () => {
+    if (!isAuthenticated) return;
+    try {
+      const config = await fileApi.getStorageConfig();
+      setStorageProvider(config.provider);
+    } catch (error) {
+      console.error('加载存储配置失败:', error);
+    }
+  }, [isAuthenticated]);
+
   // 认证成功后加载数据
   useEffect(() => {
     if (isAuthenticated) {
       loadFiles();
       loadStorageStats();
+      loadStorageConfig();
     }
-  }, [isAuthenticated, loadFiles, loadStorageStats]);
+  }, [isAuthenticated, loadFiles, loadStorageStats, loadStorageConfig]);
 
   // 登录处理
   const handleLogin = async (password: string) => {
@@ -211,6 +236,21 @@ function App() {
               status: 'uploading',
               progress: progress.percent
             } : q));
+
+            // 如果进度达到 100% 且不是本地存储，提示正在上传到存储源
+            if (progress.percent === 100 && storageProvider !== 'local') {
+              const sourceName = storageProvider === 'onedrive' ? 'OneDrive' :
+                storageProvider === 'google_drive' ? 'Google Drive' :
+                  storageProvider === 'aliyun_oss' ? 'Aliyun OSS' :
+                    storageProvider === 's3' ? 'S3' :
+                      storageProvider === 'webdav' ? 'WebDAV' : storageProvider;
+
+              setNotification({
+                show: true,
+                message: t('app.syncing', { source: sourceName }),
+                type: 'info'
+              });
+            }
           });
 
           // 上传成功
@@ -782,6 +822,13 @@ function App() {
         onClose={() => setIsFolderModalOpen(false)}
         onConfirm={(folderName) => startUpload(pendingFiles, folderName)}
         onCancel={() => startUpload(pendingFiles)}
+      />
+
+      <Notification
+        show={notification.show}
+        message={notification.message}
+        type={notification.type}
+        onClose={() => setNotification(prev => ({ ...prev, show: false }))}
       />
     </AppLayout >
   );

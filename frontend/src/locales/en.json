@@ -10,7 +10,8 @@
         "dropTitle": "Click or drag files to upload",
         "dropActive": "Drop files now",
         "dropSubtitle": "SVG, PNG, JPG or GIF (max. 800x400px)",
-        "release": "Release to upload"
+        "release": "Release to upload",
+        "syncing": "Server is uploading to {{source}}..."
     },
     "sidebar": {
         "files": "My Files",
