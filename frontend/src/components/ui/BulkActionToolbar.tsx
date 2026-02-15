@@ -2,6 +2,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Trash2, X, CheckSquare, Share2, Copy, Calendar, Lock, Check } from "lucide-react";
 import { Button } from "./Button";
+import { DatePicker } from "./DatePicker";
 
 interface BulkActionToolbarProps {
     selectedFilesCount: number;
@@ -26,6 +27,8 @@ export const BulkActionToolbar = ({
     const [isCopying, setIsCopying] = useState(false);
     const [copySuccess, setCopySuccess] = useState(false);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [showDatePicker, setShowDatePicker] = useState(false);
+    const [selectedExpDate, setSelectedExpDate] = useState<Date | null>(null);
 
     const [generatedLink, setGeneratedLink] = useState<string | null>(null);
 
@@ -40,10 +43,21 @@ export const BulkActionToolbar = ({
         } else {
             setShowShareSettings(true);
             setExpiration("");
+            setSelectedExpDate(null);
+            setShowDatePicker(false);
             setPassword("");
             setGeneratedLink(null);
             setErrorMsg(null);
         }
+    };
+
+    const handleDateSelect = (date: Date) => {
+        setSelectedExpDate(date);
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        setExpiration(`${y}/${m}/${d}`);
+        setShowDatePicker(false);
     };
 
     const handleCopyLink = async () => {
@@ -195,13 +209,27 @@ export const BulkActionToolbar = ({
                                                     <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors">
                                                         <Calendar className="h-4 w-4" />
                                                     </div>
-                                                    <input
-                                                        type="text"
-                                                        value={expiration}
-                                                        onChange={(e) => setExpiration(e.target.value)}
-                                                        placeholder="YYYY/MM/DD (过期时间)"
-                                                        className="w-full h-9 pl-9 pr-3 rounded-lg border border-border bg-background/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all hover:bg-background"
-                                                    />
+                                                    <div className="relative">
+                                                        <input
+                                                            type="text"
+                                                            value={expiration}
+                                                            readOnly
+                                                            onClick={() => setShowDatePicker(!showDatePicker)}
+                                                            placeholder="选择过期时间 (可选)"
+                                                            className="w-full h-9 pl-9 pr-3 rounded-lg border border-border bg-background/50 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all hover:bg-background cursor-pointer"
+                                                        />
+                                                        <AnimatePresence>
+                                                            {showDatePicker && (
+                                                                <div className="absolute bottom-full mb-2 left-0">
+                                                                    <DatePicker
+                                                                        selectedDate={selectedExpDate}
+                                                                        onChange={handleDateSelect}
+                                                                        onClose={() => setShowDatePicker(false)}
+                                                                    />
+                                                                </div>
+                                                            )}
+                                                        </AnimatePresence>
+                                                    </div>
                                                 </div>
 
                                                 {/* Password Input */}
