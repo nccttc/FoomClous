@@ -4,8 +4,7 @@ import { ACCESS_PASSWORD_HASH, SESSION_SECRET, TOKEN_EXPIRY } from '../utils/con
 import { generateSignature } from '../middleware/signedUrl.js';
 import { rateLimit } from 'express-rate-limit';
 import { is2FAEnabled, verifyTOTP, generateOTPAuthUrl } from '../utils/security.js';
-import pkg from 'ua-parser-js';
-const { UAParser } = pkg;
+import { UAParser } from 'ua-parser-js';
 import axios from 'axios';
 import { sendSecurityNotification } from '../services/telegramBot.js';
 
