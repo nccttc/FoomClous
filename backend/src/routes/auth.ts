@@ -2,13 +2,11 @@ import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import { ACCESS_PASSWORD_HASH, SESSION_SECRET, TOKEN_EXPIRY } from '../utils/config.js';
 import { generateSignature } from '../middleware/signedUrl.js';
-import rateLimit from 'express-rate-limit';
+import { rateLimit } from 'express-rate-limit';
 import { is2FAEnabled, verifyTOTP } from '../utils/security.js';
-import UAParserPkg from 'ua-parser-js';
+import { UAParser } from 'ua-parser-js';
 import axios from 'axios';
 import { sendSecurityNotification } from '../services/telegramBot.js';
-
-const { UAParser } = UAParserPkg;
 
 // 导入可能需要的辅助函数
 async function getIPLocation(ip: string) {
