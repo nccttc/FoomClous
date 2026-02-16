@@ -977,6 +977,50 @@ export class GoogleDriveStorageProvider implements IStorageProvider {
             return 0;
         }
     }
+
+    /**
+     * 创建分享链接
+     */
+    async createShareLink(storedPath: string, password?: string, expiration?: string): Promise<{ link: string; error?: string }> {
+        await this.ensureAuthenticated();
+
+        try {
+            // 1. 设置权限为“任何拥有链接的人均可查看”
+            // 注意：drive.file 作用域下，只能对应用创建的文件起作用
+            await this.drive.permissions.create({
+                fileId: storedPath,
+                requestBody: {
+                    role: 'reader',
+                    type: 'anyone',
+                },
+            });
+
+            // 2. 获取 webViewLink
+            const response = await this.drive.files.get({
+                fileId: storedPath,
+                fields: 'webViewLink',
+            });
+
+            const link = response.data.webViewLink;
+            if (!link) {
+                return { link: '', error: 'Google Drive 未返回有效的分享链接' };
+            }
+
+            console.log('[GoogleDrive] Share link created successfully:', link);
+
+            // 提示用户 Google Drive 不支持在 API 层面直接设置密码或过期时间（针对普通账户）
+            let errorMsg = undefined;
+            if (password || expiration) {
+                errorMsg = 'Google Drive 普通账户暂不支持通过 API 设置分享密码或过期时间，已为您生成公开分享链接。';
+            }
+
+            return { link, error: errorMsg };
+
+        } catch (error: any) {
+            console.error('[GoogleDrive] Create share link failed:', error.message);
+            return { link: '', error: `创建分享链接失败: ${error.message}` };
+        }
+    }
 }
 
 // 存储管理器
