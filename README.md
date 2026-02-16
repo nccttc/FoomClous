@@ -99,11 +99,12 @@ docker compose -f docker-compose.prod.yml up -d
 | 命令 | 描述 |
 | :--- | :--- |
 | `/start` | 验证身份并开始使用 Bot |
-| `/help` | 获取帮助信息与使用说明 |
-| `/storage` | 查看当前存储空间统计 |
+| `/help` | 获取详细帮助信息与使用说明 |
+| `/setup_2fa` | 配置或准备双重验证 (TOTP) |
+| `/storage` | 查看当前服务器磁盘与存储统计 |
 | `/list` | 查看最近上传的文件列表 |
-| `/tasks` | 查看当前任务队列状态 (包含下载进度、历史记录) |
-| `/delete <文件名>` | 删除指定文件 (需完全匹配文件名) |
+| `/tasks` | 查看当前传输任务队列 (包含下载进度) |
+| `/delete <ID>` | 删除指定文件 (支持 ID 前缀) |
 
 > [!TIP]
 > **多文件上传优化**: 当一次性转发超过 **9** 个文件时，Bot 会自动进入**静默模式**，在后台排队处理以避免刷屏，你可以随时使用 `/tasks` 查看实时进度。
@@ -138,6 +139,29 @@ echo -n "your_password" | sha256sum | awk '{print $1}'
 ```
 
 将生成的 64 位字符串填入 `.env` 文件的 `ACCESS_PASSWORD_HASH` 即可。
+
+### 🔐 双重验证 (Two-Factor Authentication)
+
+FoomClous 已内置支持 TOTP 双重验证（如 Google Authenticator）。
+- **Web 端**：在“个人设置”中通过扫码激活。
+- **Telegram Bot**：发送 `/setup_2fa` 即可获取设置二维码，直接在对话框输入验证码即可激活。
+- **安全性**：启用后，登录网页和使用 Bot 均需二次验证。
+
+---
+
+## 🌐 反向代理与 CDN 安全
+
+如果你使用 Cloudflare 或 CDN，系统已自动支持获取真实客户端 IP。
+
+### 1. Nginx 配置
+为了让后端识别真实 IP，请在 Nginx 的 `location` 块中加入：
+```nginx
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+```
+
+### 2. 获取真实 IP
+后端会自动识别 `CF-Connecting-IP` (Cloudflare) 和 `X-Forwarded-For`。
 
 ---
 
