@@ -65,7 +65,7 @@ class AuthService {
     }
 
     // 登录
-    async login(password: string): Promise<{ success: boolean; error?: string }> {
+    async login(password: string): Promise<{ success: boolean; error?: string; requiresTOTP?: boolean }> {
         try {
             const response = await fetch(`${API_BASE}/api/auth/login`, {
                 method: 'POST',
@@ -77,6 +77,32 @@ class AuthService {
 
             if (!response.ok) {
                 return { success: false, error: data.error || '登录失败' };
+            }
+
+            if (data.requiresTOTP) {
+                return { success: true, requiresTOTP: true };
+            }
+
+            this.setToken(data.token, data.expiresAt);
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: '网络错误' };
+        }
+    }
+
+    // 验证 TOTP
+    async verifyTOTP(password: string, totpToken: string): Promise<{ success: boolean; error?: string }> {
+        try {
+            const response = await fetch(`${API_BASE}/api/auth/verify-totp`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password, totpToken }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                return { success: false, error: data.error || '验证失败' };
             }
 
             this.setToken(data.token, data.expiresAt);

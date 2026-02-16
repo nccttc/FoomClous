@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { storageManager } from '../services/storage.js';
 import { authenticatedUsers, passwordInputState, isAuthenticated, loadAuthenticatedUsers, persistAuthenticatedUser } from './telegramState.js';
+import { is2FAEnabled, generateOTPAuthUrl } from '../utils/security.js';
 import { handleStart, handleHelp, handleStorage, handleList, handleDelete, handleTasks } from './telegramCommands.js';
 import { handleFileUpload, handleCleanupCallback } from './telegramUpload.js';
 import { cleanupOrphanFiles, startPeriodicCleanup } from './orphanCleanup.js';
@@ -325,6 +326,9 @@ export async function initTelegramBot(): Promise<void> {
                 if (!senderId) return;
 
                 const text = message.text || '';
+                const chatId = message.chatId;
+
+                if (!chatId) return;
 
                 // Commands
                 if (text === '/start') {
@@ -335,6 +339,32 @@ export async function initTelegramBot(): Promise<void> {
                             message: `👋 欢迎使用 FoomClous Bot!\n\n🔐 请使用下方键盘输入密码：`,
                             buttons: generatePasswordKeyboard(0),
                         });
+                    }
+                    return;
+                }
+                // 处理 /setup-2fa 命令
+                if (text === '/setup_2fa' || text === '/setup-2fa') {
+                    if (!is2FAEnabled()) {
+                        await client.sendMessage(chatId, { message: '❌ 服务器未配置 `TOTP_SECRET` 环境变量，无法启用 2FA。' });
+                        return;
+                    }
+
+                    try {
+                        const qrDataUrl = await generateOTPAuthUrl();
+                        const base64Data = qrDataUrl.replace(/^data:image\/png;base64,/, "");
+                        const buffer = Buffer.from(base64Data, 'base64');
+                        const tempPath = path.join(process.cwd(), `temp_qr_${chatId}.png`);
+                        fs.writeFileSync(tempPath, buffer);
+
+                        await client.sendFile(chatId, {
+                            file: tempPath,
+                            caption: '🔐 **双重验证 (2FA) 设置**\n\n请使用 Google Authenticator 或其他 2FA App 扫描此二维码。\n\n设置完成后，请妥善保管您的密钥。'
+                        });
+
+                        fs.unlinkSync(tempPath);
+                    } catch (e) {
+                        console.error('生成 2FA 二维码失败:', e);
+                        await client.sendMessage(chatId, { message: '❌ 生成二维码失败，请检查控制台日志。' });
                     }
                     return;
                 }
@@ -424,4 +454,21 @@ export async function initTelegramBot(): Promise<void> {
     }
 }
 
-export default { initTelegramBot };
+// 发送安全通知给所有已认证用户
+export async function sendSecurityNotification(message: string): Promise<void> {
+    if (!client || !client.connected) {
+        console.warn('⚠️ Telegram Client 未连接，无法发送安全通知');
+        return;
+    }
+
+    const authUsers = Array.from(authenticatedUsers.keys());
+    for (const userId of authUsers) {
+        try {
+            await client.sendMessage(userId, { message });
+        } catch (e) {
+            console.error(`🤖 向用户 ${userId} 发送通知失败:`, e);
+        }
+    }
+}
+
+export default { initTelegramBot, sendSecurityNotification };

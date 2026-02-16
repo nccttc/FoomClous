@@ -1,18 +1,21 @@
 import { useState, type FormEvent } from 'react';
-import { motion } from 'framer-motion';
-import { Eye, EyeOff, LogIn, AlertCircle } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Eye, EyeOff, LogIn, AlertCircle, ShieldCheck, ArrowLeft } from 'lucide-react';
+import { authService } from '../../services/auth';
 
 interface LoginPageProps {
-    onLogin: (password: string) => Promise<{ success: boolean; error?: string }>;
+    onLogin: (password: string) => Promise<{ success: boolean; error?: string; requiresTOTP?: boolean }>;
 }
 
 export const LoginPage = ({ onLogin }: LoginPageProps) => {
     const [password, setPassword] = useState('');
+    const [totpToken, setTotpToken] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [step, setStep] = useState<'password' | 'totp'>('password');
 
-    const handleSubmit = async (e: FormEvent) => {
+    const handlePasswordSubmit = async (e: FormEvent) => {
         e.preventDefault();
 
         if (!password.trim()) {
@@ -23,10 +26,46 @@ export const LoginPage = ({ onLogin }: LoginPageProps) => {
         setLoading(true);
         setError('');
 
-        const result = await onLogin(password);
+        try {
+            const result = await onLogin(password);
 
-        if (!result.success) {
-            setError(result.error || '登录失败');
+            if (!result.success) {
+                setError(result.error || '登录失败');
+                setLoading(false);
+            } else if (result.requiresTOTP) {
+                setStep('totp');
+                setLoading(false);
+            }
+            // 如果成功且不需要 TOTP，App.tsx 会处理状态跳转
+        } catch (err) {
+            setError('登录请求失败');
+            setLoading(false);
+        }
+    };
+
+    const handleTOTPSubmit = async (e: FormEvent) => {
+        e.preventDefault();
+
+        if (!totpToken.trim() || totpToken.length !== 6) {
+            setError('请输入 6 位数字验证码');
+            return;
+        }
+
+        setLoading(true);
+        setError('');
+
+        try {
+            const result = await authService.verifyTOTP(password, totpToken);
+
+            if (!result.success) {
+                setError(result.error || '验证失败');
+                setLoading(false);
+            } else {
+                // 验证成功，页面会自动因为认证状态改变而卸载
+                window.location.reload(); // 简单处理，或者在 App.tsx 中通过状态流转
+            }
+        } catch (err) {
+            setError('验证请求失败');
             setLoading(false);
         }
     };
@@ -54,73 +93,146 @@ export const LoginPage = ({ onLogin }: LoginPageProps) => {
                         />
                     </motion.div>
                     <h1 className="text-2xl font-bold tracking-tight text-foreground">FoomClous</h1>
-                    <p className="text-muted-foreground mt-1">请输入访问密码</p>
+                    <p className="text-muted-foreground mt-1">
+                        {step === 'password' ? '请输入访问密码' : '双重身份验证'}
+                    </p>
                 </div>
 
-                {/* Login Form */}
-                <motion.form
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.2 }}
-                    onSubmit={handleSubmit}
-                    className="bg-card border border-border rounded-2xl p-6 shadow-xl shadow-black/5"
-                >
-                    {/* Error Message */}
-                    {error && (
-                        <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center gap-2 text-destructive"
+                <AnimatePresence mode="wait">
+                    {step === 'password' ? (
+                        <motion.form
+                            key="password-step"
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: 20 }}
+                            onSubmit={handlePasswordSubmit}
+                            className="bg-card border border-border rounded-2xl p-6 shadow-xl shadow-black/5"
                         >
-                            <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                            <span className="text-sm">{error}</span>
-                        </motion.div>
-                    )}
+                            {/* Error Message */}
+                            {error && (
+                                <motion.div
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: 'auto' }}
+                                    className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center gap-2 text-destructive"
+                                >
+                                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                                    <span className="text-sm">{error}</span>
+                                </motion.div>
+                            )}
 
-                    {/* Password Input */}
-                    <div className="space-y-2">
-                        <label htmlFor="password" className="text-sm font-medium text-foreground">
-                            访问密码
-                        </label>
-                        <div className="relative">
-                            <input
-                                id="password"
-                                type={showPassword ? 'text' : 'password'}
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                placeholder="请输入密码"
-                                className="w-full h-12 px-4 pr-12 rounded-xl border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                                autoFocus
+                            {/* Password Input */}
+                            <div className="space-y-2">
+                                <label htmlFor="password" className="text-sm font-medium text-foreground">
+                                    访问密码
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        id="password"
+                                        type={showPassword ? 'text' : 'password'}
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        placeholder="请输入密码"
+                                        className="w-full h-12 px-4 pr-12 rounded-xl border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                                        autoFocus
+                                        disabled={loading}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                                    >
+                                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <motion.button
+                                type="submit"
                                 disabled={loading}
-                            />
+                                whileHover={{ scale: loading ? 1 : 1.01 }}
+                                whileTap={{ scale: loading ? 1 : 0.99 }}
+                                className="w-full h-12 mt-6 rounded-xl bg-primary text-primary-foreground font-medium flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {loading ? (
+                                    <div className="w-5 h-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                                ) : (
+                                    <>
+                                        <LogIn className="w-5 h-5" />
+                                        <span>下一步</span>
+                                    </>
+                                )}
+                            </motion.button>
+                        </motion.form>
+                    ) : (
+                        <motion.form
+                            key="totp-step"
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -20 }}
+                            onSubmit={handleTOTPSubmit}
+                            className="bg-card border border-border rounded-2xl p-6 shadow-xl shadow-black/5"
+                        >
                             <button
                                 type="button"
-                                onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                                onClick={() => { setStep('password'); setError(''); }}
+                                className="mb-4 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                             >
-                                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                                <ArrowLeft className="w-3 h-3" /> 返回修改密码
                             </button>
-                        </div>
-                    </div>
 
-                    {/* Submit Button */}
-                    <motion.button
-                        type="submit"
-                        disabled={loading}
-                        whileHover={{ scale: loading ? 1 : 1.01 }}
-                        whileTap={{ scale: loading ? 1 : 0.99 }}
-                        className="w-full h-12 mt-6 rounded-xl bg-primary text-primary-foreground font-medium flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {loading ? (
-                            <div className="w-5 h-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                        ) : (
-                            <>
-                                <LogIn className="w-5 h-5" />
-                                <span>登录</span>
-                            </>
-                        )}
-                    </motion.button>
-                </motion.form>
+                            {/* Error Message */}
+                            {error && (
+                                <motion.div
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: 'auto' }}
+                                    className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center gap-2 text-destructive"
+                                >
+                                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                                    <span className="text-sm">{error}</span>
+                                </motion.div>
+                            )}
+
+                            {/* TOTP Input */}
+                            <div className="space-y-4">
+                                <div className="text-center">
+                                    <ShieldCheck className="w-12 h-12 text-primary mx-auto mb-2 opacity-80" />
+                                    <h3 className="text-sm font-medium">输入身份验证码</h3>
+                                    <p className="text-xs text-muted-foreground mt-1">请输入您身份验证器 App 生成的 6 位数字</p>
+                                </div>
+                                <input
+                                    id="totp"
+                                    type="text"
+                                    inputMode="numeric"
+                                    pattern="[0-9]*"
+                                    maxLength={6}
+                                    value={totpToken}
+                                    onChange={(e) => setTotpToken(e.target.value.replace(/\D/g, ''))}
+                                    placeholder="000000"
+                                    className="w-full h-14 text-center text-2xl font-bold tracking-[0.5em] px-4 rounded-xl border border-border bg-background text-foreground placeholder:text-muted-foreground placeholder:font-normal placeholder:tracking-normal focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                                    autoFocus
+                                    disabled={loading}
+                                />
+                            </div>
+
+                            <motion.button
+                                type="submit"
+                                disabled={loading || totpToken.length !== 6}
+                                whileHover={{ scale: loading || totpToken.length !== 6 ? 1 : 1.01 }}
+                                whileTap={{ scale: loading || totpToken.length !== 6 ? 1 : 0.99 }}
+                                className="w-full h-12 mt-6 rounded-xl bg-primary text-primary-foreground font-medium flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {loading ? (
+                                    <div className="w-5 h-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                                ) : (
+                                    <>
+                                        <ShieldCheck className="w-5 h-5" />
+                                        <span>验证并登录</span>
+                                    </>
+                                )}
+                            </motion.button>
+                        </motion.form>
+                    )}
+                </AnimatePresence>
 
                 {/* Footer */}
                 <p className="text-center text-xs text-muted-foreground mt-6">

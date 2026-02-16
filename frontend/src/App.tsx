@@ -179,7 +179,7 @@ function App() {
   // 登录处理
   const handleLogin = async (password: string) => {
     const result = await authService.login(password);
-    if (result.success) {
+    if (result.success && !result.requiresTOTP) {
       setIsAuthenticated(true);
     }
     return result;

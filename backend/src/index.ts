@@ -11,6 +11,7 @@ import chunkedUploadRouter from './routes/chunkedUpload.js';
 import authRouter, { requireAuth } from './routes/auth.js';
 import { requireAuthOrSignedUrl } from './middleware/signedUrl.js';
 import { initTelegramBot } from './services/telegramBot.js';
+import helmet from 'helmet';
 
 dotenv.config();
 
@@ -47,6 +48,12 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+// 安全头部
+app.use(helmet({
+    contentSecurityPolicy: false, // 如果需要外部资源加载，可设为 false 或自定义
+    crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 
 // 认证路由（不需要认证）
 app.use('/api/auth', authRouter);
