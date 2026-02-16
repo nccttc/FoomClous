@@ -145,8 +145,8 @@ class AuthService {
         this.clearToken();
     }
 
-    // 获取 2FA 设置二维码
-    async get2FASetupQR(): Promise<string> {
+    // 获取 2FA 设置信息
+    async get2FASetupInfo(): Promise<{ qrDataUrl: string; enabled: boolean }> {
         try {
             const response = await fetch(`${API_BASE}/api/auth/2fa-setup`, {
                 headers: this.getAuthHeaders(),
@@ -154,13 +154,58 @@ class AuthService {
 
             if (!response.ok) {
                 const data = await response.json();
-                throw new Error(data.error || '获取二维码失败');
+                throw new Error(data.error || '获取 2FA 信息失败');
             }
 
-            const data = await response.json();
-            return data.qrDataUrl;
+            return await response.json();
         } catch (error: any) {
             throw new Error(error.message || '网络错误');
+        }
+    }
+
+    // 激活 2FA
+    async activate2FA(totpToken: string): Promise<{ success: boolean; error?: string }> {
+        try {
+            const response = await fetch(`${API_BASE}/api/auth/2fa-activate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...this.getAuthHeaders()
+                },
+                body: JSON.stringify({ totpToken }),
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                return { success: false, error: data.error || '激活失败' };
+            }
+
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: '网络错误' };
+        }
+    }
+
+    // 禁用 2FA
+    async disable2FA(password: string): Promise<{ success: boolean; error?: string }> {
+        try {
+            const response = await fetch(`${API_BASE}/api/auth/2fa-disable`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...this.getAuthHeaders()
+                },
+                body: JSON.stringify({ password }),
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                return { success: false, error: data.error || '禁用失败' };
+            }
+
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: '网络错误' };
         }
     }
 }

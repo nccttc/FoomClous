@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { ACCESS_PASSWORD_HASH, SESSION_SECRET, TOKEN_EXPIRY } from '../utils/config.js';
 import { generateSignature } from '../middleware/signedUrl.js';
 import { rateLimit } from 'express-rate-limit';
-import { is2FAEnabled, verifyTOTP, generateOTPAuthUrl } from '../utils/security.js';
+import { is2FAEnabled, verifyTOTP, generateOTPAuthUrl, activate2FA, disable2FA } from '../utils/security.js';
 import { UAParser } from 'ua-parser-js';
 import axios from 'axios';
 import { sendSecurityNotification } from '../services/telegramBot.js';
@@ -164,10 +164,46 @@ router.post('/verify-totp', loginLimiter, async (req: Request, res: Response) =>
 router.get('/2fa-setup', requireAuth, async (req: Request, res: Response) => {
     try {
         const qrDataUrl = await generateOTPAuthUrl();
-        res.json({ qrDataUrl });
+        const enabled = await is2FAEnabled();
+        res.json({ qrDataUrl, enabled });
     } catch (e) {
         console.error('生成 2FA 二维码失败:', e);
         res.status(500).json({ error: '生成二维码失败' });
+    }
+});
+
+// 激活 2FA (需要认证)
+router.post('/2fa-activate', requireAuth, async (req: Request, res: Response) => {
+    const { totpToken } = req.body;
+    if (!totpToken) return res.status(400).json({ error: '请输入验证码' });
+
+    try {
+        if (await verifyTOTP(totpToken)) {
+            await activate2FA();
+            return res.json({ success: true, message: '2FA 已成功激活' });
+        }
+        res.status(401).json({ error: '验证码错误' });
+    } catch (e) {
+        console.error('激活 2FA 失败:', e);
+        res.status(500).json({ error: '激活失败' });
+    }
+});
+
+// 禁用 2FA (需要认证)
+router.post('/2fa-disable', requireAuth, async (req: Request, res: Response) => {
+    const { password } = req.body;
+    if (!password) return res.status(400).json({ error: '请输入密码验证' });
+
+    if (!verifyPassword(password)) {
+        return res.status(401).json({ error: '密码错误' });
+    }
+
+    try {
+        await disable2FA();
+        res.json({ success: true, message: '2FA 已禁用' });
+    } catch (e) {
+        console.error('禁用 2FA 失败:', e);
+        res.status(500).json({ error: '禁用失败' });
     }
 });
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
-import { HardDrive, ChevronRight, Moon, Sun, Monitor, Palette, Globe, Cloud, Server, Database, CheckCircle, Trash2, Network, Shield, ShieldAlert } from "lucide-react";
+import { HardDrive, ChevronRight, Moon, Sun, Monitor, Palette, Globe, Cloud, Server, Database, CheckCircle, Trash2, Network, Shield, ShieldAlert, ShieldCheck } from "lucide-react";
 import { Button } from "../ui/Button";
 import { LanguageToggle } from "../ui/LanguageToggle";
 import { useTheme } from "../../hooks/useTheme";
@@ -117,6 +117,9 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
     const [show2FA, setShow2FA] = useState(false);
     const [isLoading2FA, setIsLoading2FA] = useState(false);
     const [twoFAError, setTwoFAError] = useState<string | null>(null);
+    const [is2FAActivated, setIs2FAActivated] = useState(false);
+    const [activationCode, setActivationCode] = useState("");
+    const [isActivating2FA, setIsActivating2FA] = useState(false);
 
     // Load initial config
     useEffect(() => {
@@ -354,11 +357,51 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
         setIsLoading2FA(true);
         setTwoFAError(null);
         try {
-            const qr = await authService.get2FASetupQR();
-            setTwoFAQrCode(qr);
+            const data = await authService.get2FASetupInfo();
+            setTwoFAQrCode(data.qrDataUrl);
+            setIs2FAActivated(data.enabled);
             setShow2FA(true);
         } catch (error: any) {
             setTwoFAError(error.message);
+        } finally {
+            setIsLoading2FA(false);
+        }
+    };
+
+    const handleActivate2FA = async () => {
+        if (!activationCode) return;
+        setIsActivating2FA(true);
+        setTwoFAError(null);
+        try {
+            const result = await authService.activate2FA(activationCode);
+            if (result.success) {
+                setIs2FAActivated(true);
+                setActivationCode("");
+            } else {
+                setTwoFAError(result.error || "验证失败");
+            }
+        } catch (error: any) {
+            setTwoFAError(error.message);
+        } finally {
+            setIsActivating2FA(false);
+        }
+    };
+
+    const handleDisable2FA = async () => {
+        const password = window.prompt("为了安全，请确认您的管理员密码以禁用 2FA：");
+        if (!password) return;
+
+        setIsLoading2FA(true);
+        try {
+            const result = await authService.disable2FA(password);
+            if (result.success) {
+                setIs2FAActivated(false);
+                setShow2FA(false);
+            } else {
+                alert(result.error || "禁用失败");
+            }
+        } catch (error: any) {
+            alert(error.message);
         } finally {
             setIsLoading2FA(false);
         }
@@ -431,14 +474,33 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
                     label="双重验证 (2FA)"
                     description="启用 TOTP 二次验证以保护您的账户安全。支持 Google Authenticator, Authy 等应用。"
                     action={
-                        <Button
-                            size="sm"
-                            variant={show2FA ? "outline" : "default"}
-                            onClick={handleSetup2FA}
-                            disabled={isLoading2FA}
-                        >
-                            {isLoading2FA ? "加载中..." : (show2FA ? "隐藏设置" : "立即设置")}
-                        </Button>
+                        <div className="flex items-center gap-2">
+                            {is2FAActivated && (
+                                <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-green-500/10 text-green-600 dark:text-green-400">
+                                    <ShieldCheck className="h-3.5 w-3.5" />
+                                    <span className="text-xs font-semibold">已启用</span>
+                                </div>
+                            )}
+                            <Button
+                                size="sm"
+                                variant={show2FA ? "outline" : "default"}
+                                onClick={handleSetup2FA}
+                                disabled={isLoading2FA}
+                            >
+                                {isLoading2FA ? "加载中..." : (show2FA ? "隐藏设置" : (is2FAActivated ? "重新配置" : "立即设置"))}
+                            </Button>
+                            {is2FAActivated && (
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="text-destructive hover:bg-destructive/10"
+                                    onClick={handleDisable2FA}
+                                    disabled={isLoading2FA}
+                                >
+                                    禁用
+                                </Button>
+                            )}
+                        </div>
                     }
                 />
 
@@ -452,21 +514,53 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
                         >
                             <div className="p-6 flex flex-col items-center text-center space-y-4">
                                 {twoFAQrCode ? (
-                                    <>
-                                        <div className="p-3 bg-white rounded-xl shadow-inner inline-block">
+                                    <div className="max-w-xs space-y-4">
+                                        <div className="p-3 bg-white rounded-xl shadow-inner inline-block mx-auto">
                                             <img src={twoFAQrCode} alt="2FA QR Code" className="w-48 h-48" />
                                         </div>
-                                        <div className="max-w-xs space-y-2">
+
+                                        <div className="space-y-2">
                                             <p className="text-sm font-medium">1. 扫描二维码</p>
                                             <p className="text-xs text-muted-foreground">
                                                 使用您的 2FA App（如 Google Authenticator）扫描此二维码。
                                             </p>
-                                            <p className="text-sm font-medium pt-2">2. 保存密钥</p>
-                                            <p className="text-xs text-muted-foreground">
-                                                设置完成后，下次登录时系统将要求输入 6 位验证码。
-                                            </p>
                                         </div>
-                                    </>
+
+                                        {!is2FAActivated ? (
+                                            <div className="pt-2 space-y-3">
+                                                <p className="text-sm font-medium">2. 验证并激活</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    输入 App 生成的 6 位验证码以确认设置。
+                                                </p>
+                                                <div className="flex gap-2 justify-center">
+                                                    <input
+                                                        type="text"
+                                                        maxLength={6}
+                                                        value={activationCode}
+                                                        onChange={(e) => setActivationCode(e.target.value.replace(/\D/g, ''))}
+                                                        className="w-32 px-3 py-2 text-center text-lg tracking-widest font-mono rounded-lg border border-border bg-background focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                                        placeholder="000000"
+                                                    />
+                                                    <Button
+                                                        onClick={handleActivate2FA}
+                                                        disabled={isActivating2FA || activationCode.length !== 6}
+                                                    >
+                                                        {isActivating2FA ? "激活中..." : "验证激活"}
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="pt-2">
+                                                <div className="flex items-center gap-2 justify-center text-green-600 dark:text-green-400">
+                                                    <ShieldCheck className="h-4 w-4" />
+                                                    <p className="text-sm font-medium">状态：已激活</p>
+                                                </div>
+                                                <p className="text-xs text-muted-foreground mt-1">
+                                                    您的账户已受到 2FA 保护。登录时将要求输入验证码。
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
                                 ) : (
                                     <div className="py-4 text-destructive flex flex-col items-center gap-2">
                                         <ShieldAlert className="h-8 w-8" />

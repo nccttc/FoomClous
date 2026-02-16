@@ -28,7 +28,22 @@ async function getTOTPSecret(): Promise<string | null> {
  */
 export async function is2FAEnabled(): Promise<boolean> {
     const secret = await getTOTPSecret();
-    return !!secret;
+    const enabled = await getSetting('2fa_enabled', 'false');
+    return !!secret && enabled === 'true';
+}
+
+/**
+ * 激活 2FA
+ */
+export async function activate2FA(): Promise<void> {
+    await setSetting('2fa_enabled', 'true');
+}
+
+/**
+ * 禁用 2FA
+ */
+export async function disable2FA(): Promise<void> {
+    await setSetting('2fa_enabled', 'false');
 }
 
 /**
