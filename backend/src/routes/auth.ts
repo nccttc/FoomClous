@@ -3,8 +3,9 @@ import crypto from 'crypto';
 import { ACCESS_PASSWORD_HASH, SESSION_SECRET, TOKEN_EXPIRY } from '../utils/config.js';
 import { generateSignature } from '../middleware/signedUrl.js';
 import { rateLimit } from 'express-rate-limit';
-import { is2FAEnabled, verifyTOTP } from '../utils/security.js';
-import { UAParser } from 'ua-parser-js';
+import { is2FAEnabled, verifyTOTP, generateOTPAuthUrl } from '../utils/security.js';
+import pkg from 'ua-parser-js';
+const { UAParser } = pkg;
 import axios from 'axios';
 import { sendSecurityNotification } from '../services/telegramBot.js';
 
@@ -158,6 +159,21 @@ router.post('/verify-totp', loginLimiter, async (req: Request, res: Response) =>
         token,
         expiresAt: expiresAt.toISOString(),
     });
+});
+
+// 获取 2FA 设置二维码 (需要认证)
+router.get('/2fa-setup', requireAuth, async (req: Request, res: Response) => {
+    if (!is2FAEnabled()) {
+        return res.status(400).json({ error: '2FA 未在服务器端启用' });
+    }
+
+    try {
+        const qrDataUrl = await generateOTPAuthUrl();
+        res.json({ qrDataUrl });
+    } catch (e) {
+        console.error('生成 2FA 二维码失败:', e);
+        res.status(500).json({ error: '生成二维码失败' });
+    }
 });
 
 // 验证 Token

@@ -1,12 +1,13 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
-import { HardDrive, ChevronRight, Moon, Sun, Monitor, Palette, Globe, Cloud, Server, Database, CheckCircle, Trash2, Network } from "lucide-react";
+import { HardDrive, ChevronRight, Moon, Sun, Monitor, Palette, Globe, Cloud, Server, Database, CheckCircle, Trash2, Network, Shield, ShieldAlert } from "lucide-react";
 import { Button } from "../ui/Button";
 import { LanguageToggle } from "../ui/LanguageToggle";
 import { useTheme } from "../../hooks/useTheme";
 import { cn } from "../../lib/utils";
 import { fileApi, type StorageStats } from "../../services/api";
+import { authService } from "../../services/auth";
 
 interface SettingsPageProps {
     storageStats?: StorageStats | null;
@@ -110,6 +111,12 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
     const [gdClientId, setGdClientId] = useState("");
     const [gdClientSecret, setGdClientSecret] = useState("");
     const [showGDForm, setShowGDForm] = useState(false);
+
+    // 2FA State
+    const [twoFAQrCode, setTwoFAQrCode] = useState<string | null>(null);
+    const [show2FA, setShow2FA] = useState(false);
+    const [isLoading2FA, setIsLoading2FA] = useState(false);
+    const [twoFAError, setTwoFAError] = useState<string | null>(null);
 
     // Load initial config
     useEffect(() => {
@@ -338,6 +345,25 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
         ? Math.round((storageStats.foomclous.usedBytes / storageStats.server.totalBytes) * 100)
         : 0;
 
+    const handleSetup2FA = async () => {
+        if (show2FA) {
+            setShow2FA(false);
+            return;
+        }
+
+        setIsLoading2FA(true);
+        setTwoFAError(null);
+        try {
+            const qr = await authService.get2FASetupQR();
+            setTwoFAQrCode(qr);
+            setShow2FA(true);
+        } catch (error: any) {
+            setTwoFAError(error.message);
+        } finally {
+            setIsLoading2FA(false);
+        }
+    };
+
     return (
         <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -396,6 +422,67 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
                         </div>
                     }
                 />
+            </SettingsSection>
+
+            {/* Security Section */}
+            <SettingsSection title="安全设置">
+                <SettingsRow
+                    icon={Shield}
+                    label="双重验证 (2FA)"
+                    description="启用 TOTP 二次验证以保护您的账户安全。支持 Google Authenticator, Authy 等应用。"
+                    action={
+                        <Button
+                            size="sm"
+                            variant={show2FA ? "outline" : "default"}
+                            onClick={handleSetup2FA}
+                            disabled={isLoading2FA}
+                        >
+                            {isLoading2FA ? "加载中..." : (show2FA ? "隐藏设置" : "立即设置")}
+                        </Button>
+                    }
+                />
+
+                <AnimatePresence>
+                    {show2FA && (
+                        <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="bg-muted/30 border-t border-border/50 overflow-hidden"
+                        >
+                            <div className="p-6 flex flex-col items-center text-center space-y-4">
+                                {twoFAQrCode ? (
+                                    <>
+                                        <div className="p-3 bg-white rounded-xl shadow-inner inline-block">
+                                            <img src={twoFAQrCode} alt="2FA QR Code" className="w-48 h-48" />
+                                        </div>
+                                        <div className="max-w-xs space-y-2">
+                                            <p className="text-sm font-medium">1. 扫描二维码</p>
+                                            <p className="text-xs text-muted-foreground">
+                                                使用您的 2FA App（如 Google Authenticator）扫描此二维码。
+                                            </p>
+                                            <p className="text-sm font-medium pt-2">2. 保存密钥</p>
+                                            <p className="text-xs text-muted-foreground">
+                                                设置完成后，下次登录时系统将要求输入 6 位验证码。
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 max-w-sm">
+                                            <ShieldAlert className="h-4 w-4 shrink-0" />
+                                            <p className="text-[10px] leading-tight text-left">
+                                                重要：请确保您已在后端 <code>.env</code> 中配置了 <code>TOTP_SECRET</code>。如果尚未配置，请先联系管理员或在服务器控制台手动设置。
+                                            </p>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="py-4 text-destructive flex flex-col items-center gap-2">
+                                        <ShieldAlert className="h-8 w-8" />
+                                        <p className="text-sm">{twoFAError || "无法加载 2FA 信息"}</p>
+                                    </div>
+                                )}
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </SettingsSection>
 
             {/* Storage Configuration Section (New) */}

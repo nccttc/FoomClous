@@ -144,6 +144,25 @@ class AuthService {
         }
         this.clearToken();
     }
+
+    // 获取 2FA 设置二维码
+    async get2FASetupQR(): Promise<string> {
+        try {
+            const response = await fetch(`${API_BASE}/api/auth/2fa-setup`, {
+                headers: this.getAuthHeaders(),
+            });
+
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.error || '获取二维码失败');
+            }
+
+            const data = await response.json();
+            return data.qrDataUrl;
+        } catch (error: any) {
+            throw new Error(error.message || '网络错误');
+        }
+    }
 }
 
 export const authService = new AuthService();
