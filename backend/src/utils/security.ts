@@ -51,16 +51,20 @@ export async function verifyTOTP(token: string): Promise<boolean> {
 
 /**
  * 生成 TOTP 设置用的二维码
- * 如果密钥不存在，则自动生成并保存到数据库
+ * 如果密钥不存在，或者格式不正确，则重新生成并保存到数据库
  */
 export async function generateOTPAuthUrl(user: string = 'Admin'): Promise<string> {
     let secret = await getTOTPSecret();
 
-    if (!secret) {
-        // 自动生成密钥 (16字节随机并转为大写 32 位 hex)
-        secret = crypto.randomBytes(16).toString('hex').toUpperCase();
+    // 检查密钥是否存在，或者是否看起来像旧的 Hex 格式 (Hex 只有 0-9, A-F)
+    // 标准 Base32 包含 A-Z, 2-7。如果密钥长度是 32 位且只包含 Hex 字符，很有可能是旧的错误格式。
+    const isMalformed = secret && secret.length === 32 && /^[0-9A-F]+$/.test(secret);
+
+    if (!secret || isMalformed) {
+        // 使用 otplib 生成标准 Base32 密钥 (通常为 16 或 32 个字符)
+        secret = authenticator.generateSecret();
         await setSetting('totp_secret', secret);
-        console.log('✅ 已为系统自动生成 2FA 密钥并存入数据库');
+        console.log('✅ 已为系统自动生成标准 Base32 2FA 密钥并存入数据库');
     }
 
     const otpauth = authenticator.toURI({
