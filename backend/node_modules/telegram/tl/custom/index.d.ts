@@ -1,1 +1,0 @@
-export { ChatGetter } from "./chatGetter";
