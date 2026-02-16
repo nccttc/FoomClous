@@ -14,8 +14,8 @@ sequenceDiagram
     participant Storage as 存储提供商
 
     User->>Bot: 发送链接/文件
-    Bot->>Worker: 加入下载队列
-    Worker->>Worker: 校验链接 & 创建临时空间
+    Bot->>Worker: 权限校验 (含 2FA)
+    Worker->>Worker: 校验通过 & 创建临时空间
     Worker->>Bot: 发送“正在下载”消息
     loop 下载中
         Worker->>Bot: 更新下载进度 (每 2s)
@@ -24,7 +24,7 @@ sequenceDiagram
     Worker->>Bot: 更新“正在上传”状态
     Storage-->>Worker: 上传完成
     Worker->>Bot: 修改消息为“✅ 上传成功”
-    Worker->>Worker: 清理本地临时文件
+    Worker->>Worker: 清理本地临时文件 (含交互中间态消息)
 ```
 
 ## 🌪️ 队列与并发控制
@@ -43,7 +43,8 @@ sequenceDiagram
 
 ## ⌨️ 快捷指令
 
-- `/start`：初始化机器人并调出操作面板。
+- `/start`：初始化机器人并调出操作面板（支持 2FA 验证）。
+- `/setup_2fa`：激活账户双重验证。
 - `发送文件夹名称`：配合分享功能（计划中）。
 - `转发消息`：自动提取转发消息中的文件进行转存。
 

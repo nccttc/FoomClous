@@ -1,0 +1,15 @@
+{
+  "extends": ["eslint:recommended"],
+  "parser": "babel-eslint",
+  "plugins": [
+
+  ],
+  "rules": {
+
+  },
+  "env": {
+    "browser": true,
+    "node": true,
+    "mocha": true
+  }
+}

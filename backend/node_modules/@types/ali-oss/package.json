@@ -1,0 +1,36 @@
+{
+    "name": "@types/ali-oss",
+    "version": "6.23.3",
+    "description": "TypeScript definitions for ali-oss",
+    "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/ali-oss",
+    "license": "MIT",
+    "contributors": [
+        {
+            "name": "Ptrdu",
+            "githubUsername": "ptrdu",
+            "url": "https://github.com/ptrdu"
+        },
+        {
+            "name": "StarHeart",
+            "githubUsername": "StarHeartHunt",
+            "url": "https://github.com/StarHeartHunt"
+        },
+        {
+            "name": "cnjsstong",
+            "githubUsername": "cnjsstong",
+            "url": "https://github.com/cnjsstong"
+        }
+    ],
+    "main": "",
+    "types": "index.d.ts",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "directory": "types/ali-oss"
+    },
+    "scripts": {},
+    "dependencies": {},
+    "peerDependencies": {},
+    "typesPublisherContentHash": "0650119214da6fa4b7651bb18d8610d1c6f888193d629d97fd1af46947400ecf",
+    "typeScriptVersion": "5.2"
+}

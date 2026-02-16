@@ -1,0 +1,22 @@
+{
+  "name": "node-hex",
+  "version": "1.0.1",
+  "description": "Pretty-prints a Buffer",
+  "keywords": [
+    "hex",
+    "print",
+    "buffer"
+  ],
+  "repository": "git://github.com/node-modules/node-hex.git",
+  "engines": {
+    "node": ">=8.0.0"
+  },
+  "license": "MIT",
+  "main": "lib/index.js",
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "test": "node test.js"
+  }
+}

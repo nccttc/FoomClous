@@ -1,0 +1,2 @@
+import{hmac as o}from"@noble/hashes/hmac.js";import{sha1 as e}from"@noble/hashes/legacy.js";import{sha256 as s,sha512 as m}from"@noble/hashes/sha2.js";import{randomBytes as i}from"@noble/hashes/utils.js";import{constantTimeEqual as p}from"@otplib/core";var t=class{name="noble";hmac(r,n,a){return o(r==="sha1"?e:r==="sha256"?s:m,n,a)}randomBytes(r){return i(r)}constantTimeEqual(r,n){return p(r,n)}},A=Object.freeze(new t),b=t;export{t as NobleCryptoPlugin,A as crypto,b as default};
+//# sourceMappingURL=index.js.map

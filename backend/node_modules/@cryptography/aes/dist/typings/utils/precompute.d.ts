@@ -1,0 +1,11 @@
+export declare const S: Uint8Array;
+export declare const Si: Uint8Array;
+export declare const T1: Uint32Array;
+export declare const T2: Uint32Array;
+export declare const T3: Uint32Array;
+export declare const T4: Uint32Array;
+export declare const T5: Uint32Array;
+export declare const T6: Uint32Array;
+export declare const T7: Uint32Array;
+export declare const T8: Uint32Array;
+export default function computeTables(): void;

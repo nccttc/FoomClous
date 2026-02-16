@@ -1,0 +1,44 @@
+{
+  "name": "digest-header",
+  "version": "1.1.0",
+  "description": "Digest access authentication header helper",
+  "main": "index.js",
+  "files": [
+    "index.js"
+  ],
+  "scripts": {
+    "lint": "echo 'ignore'",
+    "test": "egg-bin test",
+    "ci": "egg-bin cov"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "contributors": "*",
+    "egg-bin": "^4.20.0",
+    "should": "3.2.0"
+  },
+  "homepage": "https://github.com/node-modules/digest-header",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:node-modules/digest-header.git"
+  },
+  "bugs": {
+    "url": "https://github.com/node-modules/digest-header/issues"
+  },
+  "keywords": [
+    "digest",
+    "http-digest",
+    "baseauth",
+    "www-authenticate",
+    "authentication",
+    "http-authentication",
+    "digestauth",
+    "digest-auth",
+    "digest-header"
+  ],
+  "engines": {
+    "node": ">= 8.0.0"
+  },
+  "author": "fengmk2 <fengmk2@gmail.com> (https://github.com/fengmk2)",
+  "license": "MIT"
+}

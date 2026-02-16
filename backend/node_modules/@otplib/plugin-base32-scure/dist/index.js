@@ -1,0 +1,2 @@
+import{base32 as s}from"@scure/base";var r=class{name="scure";encode(o,e={}){let{padding:t=!1}=e,n=s.encode(o);return t?n:n.replace(/=+$/,"")}decode(o){try{let e=o.toUpperCase(),t=e.padEnd(Math.ceil(e.length/8)*8,"=");return s.decode(t)}catch(e){throw e instanceof Error?new Error(`Invalid Base32 string: ${e.message}`):new Error("Invalid Base32 string")}}},d=Object.freeze(new r),i=r;export{r as ScureBase32Plugin,d as base32,i as default};
+//# sourceMappingURL=index.js.map

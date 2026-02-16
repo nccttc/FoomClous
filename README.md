@@ -25,7 +25,7 @@
 - **多端上传**：支持 Web 后台管理与 Telegram 机器人一键转存。
 - **广阔兼容**：原生适配本地磁盘、S3 兼容存储、WebDAV、OneDrive、Google Drive 等主流云端。
 - **智能体验**：支持视频在线预览、GIF 动图自动播放及大文件断点续传。
-- **隐私保护**：所有云端凭据仅本地保存，通过服务器代理模式避免密钥泄露。
+- **隐私保护**：所有云端凭据仅本地保存，内置 TOTP 双重验证 (2FA)，确保管理端与 Bot 访问安全。
 
 ---
-*© 2026 FoomClous Team. Documentation updated at: 2026-02-15*
+*© 2026 FoomClous Team. Documentation updated at: 2026-02-16*
