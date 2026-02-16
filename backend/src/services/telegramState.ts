@@ -1,5 +1,19 @@
 import { query } from '../db/index.js';
 
+// Telegram User States
+export enum TelegramUserState {
+    IDLE = 'IDLE',
+    WAITING_2FA_LOGIN = 'WAITING_2FA_LOGIN',
+    WAITING_2FA_SETUP = 'WAITING_2FA_SETUP',
+}
+
+// User state storage
+export const userStates = new Map<number, {
+    state: TelegramUserState;
+    qrMessageId?: number;
+    promptMessageId?: number;
+}>();
+
 // Authenticated user storage (Cache)
 export const authenticatedUsers = new Map<number, { authenticatedAt: Date }>();
 
@@ -10,7 +24,7 @@ export const passwordInputState = new Map<number, { password: string }>();
 export async function loadAuthenticatedUsers(): Promise<void> {
     try {
         const result = await query('SELECT user_id, authenticated_at FROM telegram_auth');
-        result.rows.forEach(row => {
+        result.rows.forEach((row: any) => {
             // Telegram IDs are stored as BIGINT in DB, but we use number in Map
             authenticatedUsers.set(Number(row.user_id), { authenticatedAt: new Date(row.authenticated_at) });
         });

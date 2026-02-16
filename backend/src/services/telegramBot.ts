@@ -5,8 +5,8 @@ import { Raw } from 'telegram/events/index.js';
 import fs from 'fs';
 import path from 'path';
 import { storageManager } from '../services/storage.js';
-import { authenticatedUsers, passwordInputState, isAuthenticated, loadAuthenticatedUsers, persistAuthenticatedUser } from './telegramState.js';
-import { is2FAEnabled, generateOTPAuthUrl } from '../utils/security.js';
+import { authenticatedUsers, passwordInputState, isAuthenticated, loadAuthenticatedUsers, persistAuthenticatedUser, userStates, TelegramUserState } from './telegramState.js';
+import { is2FAEnabled, generateOTPAuthUrl, verifyTOTP, activate2FA } from '../utils/security.js';
 import { handleStart, handleHelp, handleStorage, handleList, handleDelete, handleTasks } from './telegramCommands.js';
 import { handleFileUpload, handleCleanupCallback } from './telegramUpload.js';
 import { cleanupOrphanFiles, startPeriodicCleanup } from './orphanCleanup.js';
@@ -103,8 +103,23 @@ async function handlePasswordCallback(update: Api.UpdateBotCallbackQuery): Promi
                 // Auto verify
                 if (state.password.length >= 4) {
                     if (verifyPassword(state.password)) {
-                        await persistAuthenticatedUser(userId);
                         passwordInputState.delete(userId);
+
+                        // Check if 2FA is enabled
+                        if (await is2FAEnabled()) {
+                            userStates.set(userId, {
+                                state: TelegramUserState.WAITING_2FA_LOGIN,
+                                promptMessageId: update.msgId
+                            });
+                            await client.editMessage(update.peer, {
+                                message: update.msgId,
+                                text: `🔐 密码验证通过！\n\n请输入您的 **2FA 6 位验证码** 以完成登录：`,
+                            });
+                            await client.invoke(new Api.messages.SetBotCallbackAnswer({ queryId: update.queryId, message: '请输入 2FA 验证码' }));
+                            return;
+                        }
+
+                        await persistAuthenticatedUser(userId);
                         await client.editMessage(update.peer, {
                             message: update.msgId,
                             text: `✅ 密码验证成功!\n\n现在您可以:\n📤 发送或转发任意文件上传（支持最大2GB）\n📊 /storage 查看存储空间`,
@@ -351,9 +366,14 @@ export async function initTelegramBot(): Promise<void> {
                         const tempPath = path.join(process.cwd(), `temp_qr_${chatId}.png`);
                         fs.writeFileSync(tempPath, buffer);
 
-                        await client.sendFile(chatId, {
+                        const qrMessage = await client.sendFile(chatId, {
                             file: tempPath,
-                            caption: '🔐 **双重验证 (2FA) 设置**\n\n请使用 Google Authenticator 或其他 2FA App 扫描此二维码。\n\n设置完成后，下次登录（网页端或 Bot）时系统将要求输入 6 位验证码。\n\n*提示：密钥已加密保存。*'
+                            caption: '🔐 **双重验证 (2FA) 设置**\n\n1. 请使用 Google Authenticator 或其他 2FA App 扫描此二维码。\n2. 扫描完成后，**请直接在此发送 App 生成的 6 位验证码**以激活 2FA。\n\n*提示：激活成功后此二维码将自动删除。*'
+                        });
+
+                        userStates.set(senderId, {
+                            state: TelegramUserState.WAITING_2FA_SETUP,
+                            qrMessageId: qrMessage.id
                         });
 
                         fs.unlinkSync(tempPath);
@@ -405,6 +425,49 @@ export async function initTelegramBot(): Promise<void> {
                     }
                     await handleTasks(message);
                     return;
+                }
+
+                // Handle 2FA Verification (Setup or Login)
+                const userState = userStates.get(senderId);
+                if (userState && (userState.state === TelegramUserState.WAITING_2FA_SETUP || userState.state === TelegramUserState.WAITING_2FA_LOGIN)) {
+                    // Try to extract 6 digit code from text (allow spaces or dashes)
+                    const cleanText = text.replace(/[\s-]/g, '');
+                    if (/^\d{6}$/.test(cleanText)) {
+                        const verified = await verifyTOTP(cleanText);
+
+                        if (verified) {
+                            if (userState.state === TelegramUserState.WAITING_2FA_SETUP) {
+                                await activate2FA();
+                                await message.reply({ message: '✅ 2FA 已成功激活！\n您的账户现在受到额外保护。' });
+                            } else {
+                                await persistAuthenticatedUser(senderId);
+                                await message.reply({ message: '✅ 2FA 验证成功，欢迎回来！' });
+                            }
+
+                            // Clean up sensitive messages
+                            try {
+                                const messagesToDelete = [message.id]; // User's code message
+                                if (userState.qrMessageId) messagesToDelete.push(userState.qrMessageId);
+                                if (userState.promptMessageId) messagesToDelete.push(userState.promptMessageId);
+
+                                await client.deleteMessages(chatId, messagesToDelete, { revoke: true });
+                            } catch (e) {
+                                console.error('🤖 删除 2FA 相关消息失败:', e);
+                            }
+
+                            userStates.delete(senderId);
+                            return;
+                        } else {
+                            const errorMsg = await message.reply({ message: '❌ 验证码错误，请重新输入 6 位数字：' });
+
+                            // Delete invalid code message and error message potentially? 
+                            // Let's at least delete user message
+                            try {
+                                await client.deleteMessages(chatId, [message.id], { revoke: true });
+                            } catch (e) { }
+                            return;
+                        }
+                    }
                 }
 
                 // File Handling
