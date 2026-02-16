@@ -288,10 +288,11 @@ export async function initTelegramBot(): Promise<void> {
                 langCode: 'zh',
                 commands: [
                     new Api.BotCommand({ command: 'start', description: '开始使用 / 验证身份' }),
-                    new Api.BotCommand({ command: 'storage', description: '查看存储空间统计' }),
-                    new Api.BotCommand({ command: 'list', description: '查看最近上传的文件' }),
-                    new Api.BotCommand({ command: 'tasks', description: '查看任务队列状态' }),
-                    new Api.BotCommand({ command: 'help', description: '获取帮助信息' }),
+                    new Api.BotCommand({ command: 'setup_2fa', description: '配置双重验证 (2FA)' }),
+                    new Api.BotCommand({ command: 'storage', description: '查看存储统计' }),
+                    new Api.BotCommand({ command: 'list', description: '查看上传记录' }),
+                    new Api.BotCommand({ command: 'tasks', description: '查看任务状态' }),
+                    new Api.BotCommand({ command: 'help', description: '显示预览帮助' }),
                 ]
             }));
             console.log('🤖 Bot 命令菜单已更新');

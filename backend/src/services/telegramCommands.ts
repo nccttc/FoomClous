@@ -22,9 +22,22 @@ export async function handleStart(message: Api.Message, senderId: number): Promi
 }
 
 export async function handleHelp(message: Api.Message): Promise<void> {
-    await message.reply({
-        message: `📖 **FoomClous Bot 帮助**\n\n**命令:**\n├ /start - 开始/验证\n├ /storage - 查看存储空间\n├ /list [n] - 查看最近上传 (默认10)\n├ /tasks - 查看任务队列状态\n├ /delete <ID> - 删除文件\n└ /help - 显示帮助\n\n**上传文件:**\n直接发送或转发任意文件即可上传\n✨ 支持最大 **2GB** 文件！`,
-    });
+    const helpText = `🌟 **FoomClous Bot 极简管理端**\n\n` +
+        `🚀 **核心功能**\n` +
+        `├ 📤 **直接发送文件**：支持最大 2GB 文件上传\n` +
+        `├ 📁 **我的文件**：使用 /list 查看最近记录\n` +
+        `└ 📊 **系统监控**：使用 /storage 和 /tasks\n\n` +
+        `🛠️ **常用命令**\n` +
+        `├ /start - 身份认证与开始\n` +
+        `├ /storage - 服务器磁盘与存储统计\n` +
+        `├ /list [n] - 查看最近上传 (默认 10 条)\n` +
+        `├ /delete <ID> - 快速删除指定文件\n` +
+        `├ /tasks - 查看实时传输任务队列\n` +
+        `├ /setup_2fa - 配置扫码双重验证 (TOTP)\n` +
+        `└ /help - 显示此帮助信息\n\n` +
+        `💡 **提示**：转发文件给 Bot 即可立即开始自动上传。`;
+
+    await message.reply({ message: helpText });
 }
 
 export async function handleStorage(message: Api.Message): Promise<void> {
