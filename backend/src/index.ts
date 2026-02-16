@@ -42,7 +42,7 @@ if (!fs.existsSync(CHUNK_DIR)) {
 app.use(cors({
     origin: true, // 允许所有来源
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
     allowedHeaders: ['Content-Type', 'X-API-Key', 'X-Upload-Id', 'X-Chunk-Index', 'Authorization'],
 }));
 
