@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { ACCESS_PASSWORD_HASH, SESSION_SECRET, TOKEN_EXPIRY } from '../utils/config.js';
 import { generateSignature } from '../middleware/signedUrl.js';
 import { rateLimit } from 'express-rate-limit';
-import { is2FAEnabled, verifyTOTP, generateOTPAuthUrl, activate2FA, disable2FA } from '../utils/security.js';
+import { is2FAEnabled, verifyTOTP, generateOTPAuthUrl, activate2FA, disable2FA, getClientIP } from '../utils/security.js';
 import { UAParser } from 'ua-parser-js';
 import axios from 'axios';
 import { sendSecurityNotification } from '../services/telegramBot.js';
@@ -22,7 +22,8 @@ async function getIPLocation(ip: string) {
     return '未知位置';
 }
 
-async function sendLoginNotification(req: Request, ip: string) {
+async function sendLoginNotification(req: Request) {
+    const ip = getClientIP(req);
     const ua = new UAParser(req.headers['user-agent']).getResult();
     const location = await getIPLocation(ip);
     const now = new Date();
@@ -85,7 +86,7 @@ const loginLimiter = rateLimit({
     message: { error: '尝试次数过多，请 15 分钟后再试' },
     standardHeaders: true,
     legacyHeaders: false,
-    validate: { trustProxy: false },
+    keyGenerator: (req: Request) => getClientIP(req),
 });
 
 // 登录接口
@@ -117,7 +118,7 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
     sessions.set(token, { createdAt: now, expiresAt });
 
     // 异步发送通知
-    sendLoginNotification(req, req.ip || '未知');
+    sendLoginNotification(req);
 
     res.json({
         success: true,
@@ -151,7 +152,7 @@ router.post('/verify-totp', loginLimiter, async (req: Request, res: Response) =>
     sessions.set(token, { createdAt: now, expiresAt });
 
     // 异步发送通知
-    sendLoginNotification(req, req.ip || '未知');
+    sendLoginNotification(req);
 
     res.json({
         success: true,
