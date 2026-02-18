@@ -426,9 +426,10 @@ export function buildSilentBatchComplete(types: string, providerName: string): s
     return `✅ **多文件上传完成！**\n🏷️ 类型: ${types}\n📍 ${getProviderDisplayName(providerName)}`;
 }
 
-// ─── 合并单文件状态 ──────────────────────────────────────────
+// ─── 合并状态（单文件 + 批量） ──────────────────────────────
 
 export interface ConsolidatedUploadFile {
+    id?: string;
     fileName: string;
     typeEmoji: string;
     phase: 'queued' | 'downloading' | 'saving' | 'success' | 'failed' | 'retrying';
@@ -440,69 +441,106 @@ export interface ConsolidatedUploadFile {
     fileType?: string;
 }
 
+export interface ConsolidatedBatchEntry {
+    id: string;
+    folderName: string;
+    totalFiles: number;
+    completed: number;
+    successful: number;
+    failed: number;
+    providerName?: string;
+    isSilent?: boolean;
+    queuePending?: number;
+}
+
 /**
- * 合并显示所有活跃的单文件上传任务到一条消息
- * 当有 2+ 个任务同时进行时使用，替代删除旧消息的行为
+ * 合并显示所有活跃任务（单文件 + 批量）到一条消息
  */
-export function buildConsolidatedStatus(files: ConsolidatedUploadFile[]): string {
-    const total = files.length;
-    const completed = files.filter(f => f.phase === 'success' || f.phase === 'failed').length;
-    const successCount = files.filter(f => f.phase === 'success').length;
-    const failedCount = files.filter(f => f.phase === 'failed').length;
+export function buildConsolidatedStatus(
+    singleFiles: ConsolidatedUploadFile[],
+    batches: ConsolidatedBatchEntry[]
+): string {
+    const totalSingle = singleFiles.length;
+    const totalBatches = batches.length;
+    const totalTasks = totalSingle + totalBatches;
 
-    let statusIcon: string;
-    let statusText: string;
+    // 计算总体状态 for icon
+    const singleCompleted = singleFiles.filter(f => f.phase === 'success' || f.phase === 'failed').length;
+    const batchCompleted = batches.filter(b => b.completed === b.totalFiles).length;
+    const allCompleted = (singleCompleted + batchCompleted) === totalTasks;
 
-    if (completed === total) {
-        if (failedCount === 0) { statusIcon = '✅'; statusText = '所有文件上传完成！'; }
-        else if (successCount === 0) { statusIcon = '❌'; statusText = '文件上传失败'; }
-        else { statusIcon = '⚠️'; statusText = '部分文件上传完成'; }
-    } else {
-        statusIcon = '📦'; statusText = `正在处理 ${total} 个文件...`;
+    let statusIcon = '📦';
+    let statusText = `正在处理 ${totalTasks} 个任务...`;
+
+    if (allCompleted && totalTasks > 0) {
+        statusIcon = '✅';
+        statusText = '所有任务处理完成';
     }
 
     const lines: string[] = [
         `${statusIcon} **${statusText}**`,
-        `📊 进度: ${completed}/${total}`,
-        generateProgressBar(completed, total),
         '',
     ];
 
-    files.forEach(file => {
-        let icon: string;
-        let detail: string;
+    // 1. 渲染批量任务 (文件夹)
+    if (totalBatches > 0) {
+        batches.forEach(batch => {
+            const isDone = batch.completed === batch.totalFiles;
+            const icon = isDone ? (batch.failed === 0 ? '✅' : '⚠️') : '📂';
+            const progress = generateProgressBar(batch.completed, batch.totalFiles);
 
-        switch (file.phase) {
-            case 'downloading':
-                icon = '⬇️';
-                if (file.downloaded !== undefined && file.total) {
-                    const pct = Math.round((file.downloaded / file.total) * 100);
-                    detail = `下载中 ${pct}% (${formatBytes(file.downloaded)}/${formatBytes(file.total)})`;
-                } else {
-                    detail = '下载中...';
-                }
-                break;
-            case 'saving':
-                icon = '💾'; detail = '保存中...'; break;
-            case 'success':
-                icon = '✅';
-                const parts: string[] = [];
-                if (file.size) parts.push(formatBytes(file.size));
-                if (file.providerName) parts.push(getProviderDisplayName(file.providerName));
-                detail = parts.join(' · ') || '完成';
-                break;
-            case 'failed':
-                icon = '❌'; detail = file.error || '失败'; break;
-            case 'retrying':
-                icon = '🔄'; detail = '重试中...'; break;
-            case 'queued':
-            default:
-                icon = '🕒'; detail = '排队中'; break;
-        }
+            lines.push(`${icon} **${batch.folderName}**`);
+            lines.push(`    ${progress} (${batch.completed}/${batch.totalFiles})`);
+            if (isDone || batch.successful > 0 || batch.failed > 0) {
+                lines.push(`    ✅ ${batch.successful}  ❌ ${batch.failed}`);
+            }
+            if (batch.queuePending && batch.queuePending > 0 && !isDone) {
+                lines.push(`    ⏳ 队列: ${batch.queuePending}`);
+            }
+            if (batch.providerName && isDone) {
+                lines.push(`    📍 ${getProviderDisplayName(batch.providerName)}`);
+            }
+        });
+        if (totalSingle > 0) lines.push('');
+    }
 
-        lines.push(`${icon} ${file.typeEmoji} ${file.fileName}`);
-        lines.push(`    └ ${detail}`);
-    });
+    // 2. 渲染单文件任务
+    if (totalSingle > 0) {
+        singleFiles.forEach(file => {
+            let icon: string;
+            let detail: string;
+
+            switch (file.phase) {
+                case 'downloading':
+                    icon = '⬇️';
+                    if (file.downloaded !== undefined && file.total) {
+                        const pct = Math.round((file.downloaded / file.total) * 100);
+                        detail = `下载 ${pct}%`;
+                    } else {
+                        detail = '下载中...';
+                    }
+                    break;
+                case 'saving':
+                    icon = '💾'; detail = '保存...'; break;
+                case 'success':
+                    icon = '✅';
+                    const parts: string[] = [];
+                    if (file.size) parts.push(formatBytes(file.size));
+                    detail = parts.join(' · ') || '完成';
+                    break;
+                case 'failed':
+                    icon = '❌'; detail = file.error || '失败'; break;
+                case 'retrying':
+                    icon = '🔄'; detail = '重试...'; break;
+                case 'queued':
+                default:
+                    icon = '🕒'; detail = '排队'; break;
+            }
+
+            lines.push(`${icon} ${file.typeEmoji} ${file.fileName}`);
+            lines.push(`    └ ${detail}`);
+        });
+    }
 
     return lines.join('\n');
 }

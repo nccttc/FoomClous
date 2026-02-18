@@ -25,6 +25,7 @@ import {
     buildConsolidatedStatus,
     type BatchFile,
     type ConsolidatedUploadFile,
+    type ConsolidatedBatchEntry,
 } from '../utils/telegramMessages.js';
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || './data/uploads';
@@ -281,13 +282,50 @@ function getConsolidatedFiles(chatId: string): ConsolidatedUploadFile[] {
     return Array.from(map.values());
 }
 
+// 每个 chat 的当前活跃批量上传列表
+const chatActiveBatches = new Map<string, Map<string, ConsolidatedBatchEntry>>();
+
+function registerBatch(chatId: string, batchId: string, entry: ConsolidatedBatchEntry) {
+    if (!chatActiveBatches.has(chatId)) {
+        chatActiveBatches.set(chatId, new Map());
+    }
+    chatActiveBatches.get(chatId)!.set(batchId, entry);
+}
+
+function updateBatch(chatId: string, batchId: string, updates: Partial<ConsolidatedBatchEntry>) {
+    const map = chatActiveBatches.get(chatId);
+    if (!map) return;
+    const entry = map.get(batchId);
+    if (entry) Object.assign(entry, updates);
+}
+
+function removeBatch(chatId: string, batchId: string) {
+    const map = chatActiveBatches.get(chatId);
+    if (map) {
+        map.delete(batchId);
+        if (map.size === 0) chatActiveBatches.delete(chatId);
+    }
+}
+
+function getActiveBatchCount(chatId: string): number {
+    return chatActiveBatches.get(chatId)?.size || 0;
+}
+
+function getConsolidatedBatches(chatId: string): ConsolidatedBatchEntry[] {
+    const map = chatActiveBatches.get(chatId);
+    if (!map) return [];
+    return Array.from(map.values());
+}
+
 /** 更新合并状态消息 */
 async function refreshConsolidatedMessage(client: TelegramClient, chatId: Api.TypeEntityLike, replyTo?: Api.Message) {
     const chatIdStr = chatId.toString();
     const files = getConsolidatedFiles(chatIdStr);
-    if (files.length === 0) return;
+    const batches = getConsolidatedBatches(chatIdStr);
 
-    const text = buildConsolidatedStatus(files);
+    if (files.length === 0 && batches.length === 0) return;
+
+    const text = buildConsolidatedStatus(files, batches);
     const existingMsgId = lastStatusMessageIdMap.get(chatIdStr);
     const isSilent = lastStatusMessageIsSilent.get(chatIdStr);
 
@@ -323,6 +361,7 @@ interface FileUploadItem {
     fileType?: string;
     error?: string;
     retried?: boolean;           // 是否已重试过
+    targetDir?: string;          // 批量上传时文件的目标目录
 }
 
 interface MediaGroupQueue {
@@ -506,7 +545,7 @@ async function processFileUpload(client: TelegramClient, file: FileUploadItem, q
         let storedName: string | undefined;
 
         try {
-            const targetDir = queue?.folderPath;
+            const targetDir = file.targetDir || UPLOAD_DIR; // 使用 file.targetDir
             const result = await downloadAndSaveFile(client, file.message, file.fileName, targetDir);
             if (!result) {
                 file.error = '下载失败';
@@ -575,46 +614,23 @@ async function processFileUpload(client: TelegramClient, file: FileUploadItem, q
 
     const queueTask = async () => {
         file.status = 'uploading';
-        if (queue && queue.statusMsgId && queue.chatId) {
-            await runStatusAction(queue.chatId, async () => {
-                await safeEditMessage(client, queue.chatId!, {
-                    message: queue.statusMsgId!,
-                    text: generateBatchStatusMessage(queue),
-                });
-            });
-        }
+        // 不再单独更新 msg，由外部轮询或回调处理
+        // if (queue && queue.statusMsgId && queue.chatId) ...
 
         const firstAttemptSuccess = await attemptUpload();
 
         if (!firstAttemptSuccess && !file.retried) {
             file.retried = true;
-            file.status = 'uploading';
+            file.status = 'uploading'; // 保持 uploading 状态供外部显示
             file.error = undefined;
-
-            if (queue && queue.statusMsgId && queue.chatId) {
-                await runStatusAction(queue.chatId, async () => {
-                    await safeEditMessage(client, queue.chatId!, {
-                        message: queue.statusMsgId!,
-                        text: generateBatchStatusMessage(queue).replace(file.fileName, `${file.fileName} (重试中...)`),
-                    });
-                });
-            }
-
-            const retrySuccess = await attemptUpload();
-            if (!retrySuccess) {
+            // retry message? 外部 ConsolidatedStatus 会处理 retrying 状态显示，这里暂时还是 uploading
+            // 可以在 attemptUpload 内部加 retry 逻辑
+            const secondAttemptSuccess = await attemptUpload();
+            if (!secondAttemptSuccess) {
                 file.status = 'failed';
             }
         } else if (!firstAttemptSuccess) {
             file.status = 'failed';
-        }
-
-        if (queue && queue.statusMsgId && queue.chatId) {
-            await runStatusAction(queue.chatId, async () => {
-                await safeEditMessage(client, queue.chatId!, {
-                    message: queue.statusMsgId!,
-                    text: generateBatchStatusMessage(queue),
-                });
-            });
         }
     };
 
@@ -640,111 +656,103 @@ async function processBatchUpload(client: TelegramClient, mediaGroupId: string):
         }
     }
 
+    const chatIdStr = queue.chatId!.toString();
+    const batchId = mediaGroupId;
+
     if (!folderName) {
-        const now = new Date();
-        folderName = `batch_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+        folderName = new Date().toISOString().replace(/[:.]/g, '-');
     }
 
-    let sanitizedFolderName = sanitizeFilename(folderName);
-    let folderPath = path.join(UPLOAD_DIR, sanitizedFolderName);
-
-    if (!fs.existsSync(folderPath)) {
-        try {
-            fs.mkdirSync(folderPath, { recursive: true });
-        } catch (err) {
-            console.error(`🤖 创建批量上传文件夹失败: ${folderPath}`, err);
-            const fallbackFolderName = `fallback_${Date.now()}`;
-            const fallbackPath = path.join(UPLOAD_DIR, fallbackFolderName);
-            try {
-                if (!fs.existsSync(fallbackPath)) {
-                    fs.mkdirSync(fallbackPath, { recursive: true });
-                }
-                sanitizedFolderName = fallbackFolderName;
-                folderPath = fallbackPath;
-            } catch (innerErr) {
-                sanitizedFolderName = '';
-                folderPath = UPLOAD_DIR;
-            }
-        }
-    }
-
-    queue.folderName = sanitizedFolderName;
-    queue.folderPath = folderPath;
-
-    await runStatusAction(queue.chatId, async () => {
-        const stats = downloadQueue.getStats();
-        const totalPending = stats.pending + queue.files.length;
-        const chatIdStr = queue.chatId!.toString();
-        const lastMsgId = lastStatusMessageIdMap.get(chatIdStr);
-
-        if (totalPending >= 9) {
-            const now = Date.now();
-            const lastTime = lastSilentNotificationTimeMap.get(chatIdStr) || 0;
-
-            // 仅在冷却结束或当前没有显示通知时，才发送新通知并删除旧通知
-            if (now - lastTime > SILENT_NOTIFICATION_COOLDOWN || !lastMsgId) {
-                await deleteLastStatusMessage(client, queue.chatId);
-                const sMsg = await safeReply(firstMessage, {
-                    message: buildSilentModeNotice(totalPending)
-                });
-                if (sMsg) {
-                    updateLastStatusMessageId(queue.chatId, sMsg.id, true);
-                }
-                lastSilentNotificationTimeMap.set(chatIdStr, now);
-            }
-        } else {
-            await deleteLastStatusMessage(client, queue.chatId);
-            const statusMsg = await safeReply(firstMessage, {
-                message: generateBatchStatusMessage(queue)
-            });
-            if (statusMsg) {
-                queue.statusMsgId = statusMsg.id;
-                updateLastStatusMessageId(queue.chatId, statusMsg.id, false);
-            }
-        }
+    // 注册批量任务到追踪器
+    registerBatch(chatIdStr, batchId, {
+        id: batchId,
+        folderName,
+        totalFiles: queue.files.length,
+        completed: 0,
+        successful: 0,
+        failed: 0,
+        providerName: storageManager.getProvider().name,
+        queuePending: 0
     });
 
-    await Promise.all(queue.files.map(file => processFileUpload(client, file, queue)));
-
-    if (queue.statusMsgId && queue.chatId) {
-        await runStatusAction(queue.chatId, async () => {
-            await safeEditMessage(client, queue.chatId!, {
-                message: queue.statusMsgId!,
-                text: generateBatchStatusMessage(queue),
-            });
-        });
-    } else if (queue.chatId) {
-        // 静默模式下的完成逻辑
-        const chatIdStr = queue.chatId.toString();
-        await runStatusAction(queue.chatId, async () => {
-            const isSilent = lastStatusMessageIsSilent.get(chatIdStr);
-            const lastMsgId = lastStatusMessageIdMap.get(chatIdStr);
-            console.log(`[Batch] 🏁 Completion check for chat ${chatIdStr}: isSilent=${isSilent}, lastMsgId=${lastMsgId}`);
-
-            if (isSilent && lastMsgId) {
-                const successful = queue.files.filter(f => f.status === 'success');
-                if (successful.length > 0) {
-                    const provider = storageManager.getProvider();
-                    const types = Array.from(new Set(successful.map(f => getTypeEmoji(f.mimeType)))).join(' ');
-
-                    console.log(`[Batch] ✨ Updating silent notification ${lastMsgId} to success`);
-                    const result = await safeEditMessage(client, queue.chatId!, {
-                        message: lastMsgId,
-                        text: buildSilentBatchComplete(types, provider.name)
-                    });
-                    if (result) {
-                        lastStatusMessageIsSilent.set(chatIdStr, false);
-                    } else {
-                        console.warn(`[Batch] ⚠️ Failed to update silent notification ${lastMsgId}`);
-                    }
-                }
-            }
-        });
+    const targetDir = path.join(UPLOAD_DIR, folderName);
+    if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
     }
 
-    mediaGroupQueues.delete(mediaGroupId);
-}
+    // 更新队列中所有文件的目标路径
+    queue.folderName = folderName;
+    for (const file of queue.files) {
+        file.targetDir = targetDir;
+    }
 
+    // 立即显示合并状态
+    await runStatusAction(queue.chatId, async () => {
+        const stats = downloadQueue.getStats();
+        // 如果是大量文件且之前是静默模式，可能需要保持静默或发送静默通知
+        // 这里简化逻辑：直接使用合并视图
+        await refreshConsolidatedMessage(client, queue.chatId!, firstMessage);
+    });
+
+    // 批量上传时的回调，用于更新 Batch Entry
+    const onBatchProgress = async () => {
+        const completed = queue.files.filter(f => f.status === 'success' || f.status === 'failed').length;
+        const successful = queue.files.filter(f => f.status === 'success').length;
+        const failed = queue.files.filter(f => f.status === 'failed').length;
+        const stats = downloadQueue.getStats();
+
+        updateBatch(chatIdStr, batchId, {
+            completed,
+            successful,
+            failed,
+            queuePending: stats.pending
+        });
+
+        await runStatusAction(queue.chatId, async () => {
+            await refreshConsolidatedMessage(client, queue.chatId!);
+        });
+    };
+
+    // 定时更新状态（作为补充，防止回调太频繁或丢失）
+    let lastTime = 0;
+    const statusUpdater = setInterval(async () => {
+        const now = Date.now();
+        if (now - lastTime < 3000) return;
+        lastTime = now;
+        await onBatchProgress();
+    }, 3000);
+
+    try {
+        // 启动所有文件上传
+        // 注意：我们需要修改 processFileUpload 以便它能正确工作，
+        // 或者我们可以在这里包装它。processFileUpload 自带了 retry 逻辑。
+        // 为了简单，我们让 processFileUpload 更新 file.status，我们要监控 queue.files 的状态变化。
+        // 上面的 setInterval 已经负责了轮询状态并更新 UI。
+        // 我们只需等待所有 promise 完成。
+
+        await Promise.all(queue.files.map(file => processFileUpload(client, file, queue)));
+
+        // 最后一次更新状态
+        await onBatchProgress();
+
+    } finally {
+        clearInterval(statusUpdater);
+
+        // 任务完成后延迟清理追踪器条目
+        // 只有当所有关联的 batch 都完成了，最后的消息才会被保留
+        setTimeout(() => {
+            removeBatch(chatIdStr, batchId);
+            // 触发一次刷新，如果还有其他任务则显示它们，如果没有则不通过 refreshConsolidatedMessage 发消息
+            // 注意：refreshConsolidatedMessage 如果没有任务会直接返回
+
+            // 为了让用户看到最终结果，我们不立即删除最后一条消息
+            // 而是依赖下一次任务开始时复用或新建
+        }, 8000);
+
+        // 清理 mediaGroup
+        mediaGroupQueues.delete(mediaGroupId);
+    }
+}
 // 待清理垃圾缓存信息
 interface PendingCleanupInfo {
     localPath?: string;
@@ -846,7 +854,8 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
         });
 
         let statusMsg: Api.Message | undefined;
-        const useConsolidated = () => getActiveUploadCount(chatIdStr) >= 2;
+        // 只要有 2+ 个单文件 OR 任意个批量任务，就使用合并视图
+        const useConsolidated = () => getActiveUploadCount(chatIdStr) >= 2 || getActiveBatchCount(chatIdStr) > 0;
 
         await runStatusAction(message.chatId, async () => {
             const stats = downloadQueue.getStats();
@@ -867,10 +876,10 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
                     lastSilentNotificationTimeMap.set(chatIdStr, now);
                 }
             } else if (useConsolidated()) {
-                // 多文件并行：使用合并状态消息（编辑现有的或创建新的）
+                // 多文件并行或混合模式：使用合并状态消息
                 await refreshConsolidatedMessage(client, message.chatId!, message);
             } else {
-                // 单文件：使用独立进度消息
+                // 单文件独立模式
                 await deleteLastStatusMessage(client, message.chatId!);
                 statusMsg = await safeReply(message, {
                     message: buildDownloadProgress(finalFileName, 0, totalSize, typeEmoji)
