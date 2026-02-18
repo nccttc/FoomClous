@@ -8,6 +8,22 @@ import { generateThumbnail, getImageDimensions } from '../utils/thumbnail.js';
 import { storageManager } from '../services/storage.js';
 import { isAuthenticated } from './telegramState.js';
 import { formatBytes, getTypeEmoji, getFileType, getMimeTypeFromFilename, sanitizeFilename } from '../utils/telegramUtils.js';
+import {
+    MSG,
+    getProviderDisplayName,
+    generateProgressBar,
+    buildUploadSuccess,
+    buildUploadFail,
+    buildDownloadProgress,
+    buildSavingFile,
+    buildQueuedMessage,
+    buildRetryMessage,
+    buildSilentModeNotice,
+    buildSilentComplete,
+    buildSilentBatchComplete,
+    buildBatchStatus,
+    type BatchFile,
+} from '../utils/telegramMessages.js';
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || './data/uploads';
 
@@ -268,17 +284,7 @@ function getEstimatedFileSize(message: Api.Message): number {
     return 0;
 }
 
-// 生成进度条
-function generateProgressBar(completed: number, total: number, barLength: number = 15): string {
-    const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
-    const filledLength = Math.round((completed / total) * barLength);
-    const emptyLength = barLength - filledLength;
-
-    const filledBar = '▓'.repeat(filledLength);
-    const emptyBar = '░'.repeat(emptyLength);
-
-    return `${filledBar}${emptyBar} ${percentage}%`;
-}
+// 进度条函数已移至 telegramMessages.ts (generateProgressBar)
 
 // 提取文件信息
 function extractFileInfo(message: Api.Message): { fileName: string; mimeType: string } | null {
@@ -400,88 +406,21 @@ async function downloadAndSaveFile(
 
 // 生成批量上传状态消息
 function generateBatchStatusMessage(queue: MediaGroupQueue): string {
-    const total = queue.files.length;
-    const completed = queue.files.filter(f => f.status === 'success' || f.status === 'failed').length;
-    const successful = queue.files.filter(f => f.status === 'success').length;
-    const failed = queue.files.filter(f => f.status === 'failed').length;
-
-    let statusIcon = '⏳';
-    let statusText = '正在处理多文件上传...';
-
-    if (completed === total) {
-        if (failed === 0) {
-            statusIcon = '✅';
-            statusText = '多文件上传完成!';
-        } else if (successful === 0) {
-            statusIcon = '❌';
-            statusText = '多文件上传失败!';
-        } else {
-            statusIcon = '⚠️';
-            statusText = '多文件上传部分完成';
-        }
-    }
-
-    let message = `${statusIcon} **${statusText}**\n\n`;
-
-    if (completed < total) {
-        const stats = downloadQueue.getStats();
-        if (stats.pending > 0 || stats.active >= 2) {
-            message += `⏳ 已加入下载队列 (当前排队: ${stats.pending})\n💡 请耐心等待，Bot 将按顺序处理任务。\n\n`;
-        }
-    }
-
-    if (queue.folderName) {
-        message += `📁 文件夹: ${queue.folderName}\n`;
-    }
-    message += `📊 进度: ${completed}/${total}\n`;
-    message += `${generateProgressBar(completed, total)}\n`;
-
-    // 添加类型和存储信息
-    if (successful > 0 || completed === total) {
-        const successFiles = queue.files.filter(f => f.status === 'success');
-        const types = Array.from(new Set(successFiles.map(f => getTypeEmoji(f.mimeType)))).join(' ') || '❓';
-        const provider = storageManager.getProvider();
-        const providerName = provider.name === 'onedrive' ? '☁️ OneDrive' : (provider.name === 'aliyun_oss' ? '☁️ 阿里云 OSS' : (provider.name === 's3' ? '📦 S3 存储' : (provider.name === 'webdav' ? '🌐 WebDAV' : (provider.name === 'google_drive' ? '☁️ Google Drive' : '💾 本地'))));
-
-        message += `🏷️ 类型: ${types}\n`;
-        message += `📍 存储: ${providerName}\n`;
-    }
-
-    message += '\n';
-
-    queue.files.forEach((file) => {
-        let fileIcon = '⏳';
-        let fileStatus = '等待中';
-
-        switch (file.status) {
-            case 'uploading':
-                fileIcon = '🔄';
-                fileStatus = '上传中...';
-                break;
-            case 'success':
-                fileIcon = '✅';
-                fileStatus = formatBytes(file.size || 0);
-                break;
-            case 'failed':
-                fileIcon = '❌';
-                fileStatus = file.error || '失败';
-                break;
-            case 'pending':
-                fileIcon = '⏳';
-                fileStatus = '等待中';
-                break;
-            case 'queued':
-                fileIcon = '🕒';
-                fileStatus = '排队中...';
-                break;
-        }
-
-        const typeEmoji = getTypeEmoji(file.mimeType);
-        message += `${fileIcon} ${typeEmoji} ${file.fileName}\n`;
-        message += `    └ ${fileStatus}\n`;
+    const provider = storageManager.getProvider();
+    const stats = downloadQueue.getStats();
+    return buildBatchStatus({
+        files: queue.files.map(f => ({
+            fileName: f.fileName,
+            mimeType: f.mimeType,
+            status: f.status,
+            size: f.size,
+            error: f.error,
+        })),
+        folderName: queue.folderName,
+        providerName: provider.name,
+        queuePending: stats.pending,
+        queueActive: stats.active,
     });
-
-    return message;
 }
 
 // 处理单个文件上传（带重试机制）
@@ -672,7 +611,7 @@ async function processBatchUpload(client: TelegramClient, mediaGroupId: string):
             if (now - lastTime > SILENT_NOTIFICATION_COOLDOWN || !lastMsgId) {
                 await deleteLastStatusMessage(client, queue.chatId);
                 const sMsg = await safeReply(firstMessage, {
-                    message: `🤐 **检测到多文件上传，已切换到静默模式**\n\n当前排队任务: ${totalPending} 个\nBot 将在后台继续处理所有文件，请耐心等待。\n\n💡 发送 /tasks 查看实时任务状态`
+                    message: buildSilentModeNotice(totalPending)
                 });
                 if (sMsg) {
                     updateLastStatusMessageId(queue.chatId, sMsg.id, true);
@@ -711,14 +650,13 @@ async function processBatchUpload(client: TelegramClient, mediaGroupId: string):
             if (isSilent && lastMsgId) {
                 const successful = queue.files.filter(f => f.status === 'success');
                 if (successful.length > 0) {
-                    const types = Array.from(new Set(successful.map(f => getTypeEmoji(f.mimeType)))).join(' ');
                     const provider = storageManager.getProvider();
-                    const providerName = provider.name === 'onedrive' ? '☁️ OneDrive' : (provider.name === 'aliyun_oss' ? '☁️ 阿里云 OSS' : (provider.name === 's3' ? '📦 S3 存储' : (provider.name === 'webdav' ? '🌐 WebDAV' : (provider.name === 'google_drive' ? '☁️ Google Drive' : '💾 本地'))));
+                    const types = Array.from(new Set(successful.map(f => getTypeEmoji(f.mimeType)))).join(' ');
 
                     console.log(`[Batch] ✨ Updating silent notification ${lastMsgId} to success`);
                     const result = await safeEditMessage(client, queue.chatId!, {
                         message: lastMsgId,
-                        text: `✅ **多文件上传完成!**\n🏷️ 类型: ${types}\n📍 存储: ${providerName}`
+                        text: buildSilentBatchComplete(types, provider.name)
                     });
                     if (result) {
                         lastStatusMessageIsSilent.set(chatIdStr, false);
@@ -769,7 +707,7 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
     if (!senderId) return;
 
     if (!isAuthenticated(senderId)) {
-        await message.reply({ message: '🔐 请先发送 /start 验证密码后再上传文件' });
+        await message.reply({ message: MSG.AUTH_REQUIRED_UPLOAD });
         return;
     }
 
@@ -777,7 +715,7 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
     if (!fileInfo) {
         if (message.media) {
             if ((message.media as any).className === 'MessageMediaWebPage') return;
-            await message.reply({ message: '⚠️ 抱歉，暂不支持或无法识别此类媒体格式进行上传。' });
+            await message.reply({ message: MSG.UNSUPPORTED_MEDIA });
         }
         return;
     }
@@ -835,7 +773,7 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
                 if (now - lastTime > SILENT_NOTIFICATION_COOLDOWN || !lastMsgId) {
                     await deleteLastStatusMessage(client, message.chatId!);
                     const sMsg = await safeReply(message, {
-                        message: `🤐 **检测到多文件上传，已切换到静默模式**\n\n当前排队任务: ${stats.pending} 个\nBot 将在后台继续处理所有文件，请耐心等待。\n\n💡 发送 /tasks 查看实时任务状态`
+                        message: buildSilentModeNotice(stats.pending)
                     });
                     if (sMsg) {
                         updateLastStatusMessageId(message.chatId!, sMsg.id, true);
@@ -845,7 +783,7 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
             } else {
                 await deleteLastStatusMessage(client, message.chatId!);
                 statusMsg = await safeReply(message, {
-                    message: `⏳ 正在下载文件: ${finalFileName}\n${generateProgressBar(0, 1)}\n\n${typeEmoji} ${formatBytes(0)} / ${formatBytes(totalSize)}`
+                    message: buildDownloadProgress(finalFileName, 0, totalSize, typeEmoji)
                 }) as Api.Message;
                 if (statusMsg) {
                     updateLastStatusMessageId(message.chatId!, statusMsg.id, false);
@@ -858,7 +796,7 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
             await runStatusAction(message.chatId, async () => {
                 await safeEditMessage(client, message.chatId!, {
                     message: statusMsg!.id,
-                    text: `⏳ 已加入下载队列 (当前排队: ${stats.pending})\n\n📄 文件: ${finalFileName}\n💡 请耐心等待，Bot 将按顺序处理任务。`
+                    text: buildQueuedMessage(finalFileName, stats.pending)
                 });
             });
         }
@@ -873,7 +811,7 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
             await runStatusAction(message.chatId, async () => {
                 await safeEditMessage(client, message.chatId!, {
                     message: statusMsg!.id,
-                    text: `⏳ 正在下载文件: ${finalFileName}\n${generateProgressBar(downloaded, total)}\n\n${typeEmoji} ${formatBytes(downloaded)} / ${formatBytes(total)}`,
+                    text: buildDownloadProgress(finalFileName, downloaded, total, typeEmoji),
                 });
             });
         };
@@ -900,7 +838,7 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
                     await runStatusAction(message.chatId, async () => {
                         await safeEditMessage(client, message.chatId!, {
                             message: statusMsg!.id,
-                            text: `💾 正在保存文件...\n${generateProgressBar(1, 1)}\n\n${typeEmoji} ${finalFileName}`,
+                            text: buildSavingFile(finalFileName, typeEmoji),
                         });
                     });
                 }
@@ -939,7 +877,7 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
                     await runStatusAction(message.chatId, async () => {
                         await client.editMessage(message.chatId!, {
                             message: statusMsg!.id,
-                            text: `✅ 文件上传成功!\n${generateProgressBar(1, 1)}\n\n📄 文件名: ${finalFileName}\n📦 大小: ${formatBytes(actualSize)}\n🏷️ 类型: ${fileType}\n📍 存储: ${provider.name === 'onedrive' ? '☁️ OneDrive' : (provider.name === 'aliyun_oss' ? '☁️ 阿里云 OSS' : (provider.name === 's3' ? '📦 S3 存储' : (provider.name === 'webdav' ? '🌐 WebDAV' : (provider.name === 'google_drive' ? '☁️ Google Drive' : '💾 本地'))))}`,
+                            text: buildUploadSuccess(finalFileName, actualSize, fileType, provider.name),
                         });
                     });
                 }
@@ -969,7 +907,7 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
                     await runStatusAction(message.chatId, async () => {
                         await client.editMessage(message.chatId!, {
                             message: statusMsg!.id,
-                            text: `🔄 上传失败，正在重试...\n${generateProgressBar(0, 1)}\n\n${typeEmoji} ${finalFileName}`,
+                            text: buildRetryMessage(finalFileName, typeEmoji),
                         });
                     });
                 }
@@ -981,12 +919,12 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
                     await runStatusAction(message.chatId, async () => {
                         await client.editMessage(message.chatId!, {
                             message: statusMsg!.id,
-                            text: `❌ 上传失败: ${finalFileName}\n原因: ${lastError || '未知错误'}`
+                            text: buildUploadFail(finalFileName, lastError || '未知错误')
                         }).catch(() => { });
                     });
                 } else {
                     await safeReply(message, {
-                        message: `❌ 上传失败: ${finalFileName}\n原因: ${lastError || '未知错误'}`
+                        message: buildUploadFail(finalFileName, lastError || '未知错误')
                     });
                 }
             } else {
@@ -1004,13 +942,12 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
 
                         if (isSilent && lastMsgId) {
                             const provider = storageManager.getProvider();
-                            const providerName = provider.name === 'onedrive' ? '☁️ OneDrive' : (provider.name === 'aliyun_oss' ? '☁️ 阿里云 OSS' : (provider.name === 's3' ? '📦 S3 存储' : (provider.name === 'webdav' ? '🌐 WebDAV' : '💾 本地')));
                             const typeEmoji = getTypeEmoji(mimeType);
 
                             console.log(`[Single] ✨ Updating silent notification ${lastMsgId} to success`);
                             const result = await safeEditMessage(client, message.chatId!, {
                                 message: lastMsgId,
-                                text: `✅ **上传成功!**\n🏷️ 类型: ${typeEmoji}\n📍 存储: ${providerName}`
+                                text: buildSilentComplete(typeEmoji, provider.name)
                             });
                             if (result) {
                                 lastStatusMessageIsSilent.set(chatIdStr, false);
