@@ -317,14 +317,31 @@ function getConsolidatedBatches(chatId: string): ConsolidatedBatchEntry[] {
     return Array.from(map.values());
 }
 
+function clearConsolidatedState(chatId: string) {
+    chatActiveUploads.delete(chatId);
+    chatActiveBatches.delete(chatId);
+}
+
+function isAllConsolidatedTasksDone(chatId: string): boolean {
+    const files = getConsolidatedFiles(chatId);
+    const batches = getConsolidatedBatches(chatId);
+    if (files.length === 0 && batches.length === 0) return true;
+    const filesDone = files.every(f => f.phase === 'success' || f.phase === 'failed');
+    const batchesDone = batches.every(b => b.completed === b.totalFiles);
+    return filesDone && batchesDone;
+}
+
 
 
 /** Check if this is a start of a new session and cleanup old statuses */
 async function checkAndResetSession(client: TelegramClient, chatId: Api.TypeEntityLike) {
     const chatIdStr = chatId.toString();
-    // If no active tasks are recorded, this is a new session
-    if (getActiveBatchCount(chatIdStr) === 0 && getActiveUploadCount(chatIdStr) === 0) {
+    const hasAnyTask = getActiveBatchCount(chatIdStr) > 0 || getActiveUploadCount(chatIdStr) > 0;
+    // If no tasks recorded OR all recorded tasks are already completed,
+    // treat the next incoming upload as a new session: delete old tracker and reset state.
+    if (!hasAnyTask || isAllConsolidatedTasksDone(chatIdStr)) {
         await deleteLastStatusMessage(client, chatId);
+        clearConsolidatedState(chatIdStr);
     }
 }
 
@@ -340,16 +357,20 @@ async function refreshConsolidatedMessage(client: TelegramClient, chatId: Api.Ty
     const existingMsgId = lastStatusMessageIdMap.get(chatIdStr);
     const isSilent = lastStatusMessageIsSilent.get(chatIdStr);
 
-    // 如果已有状态消息且非静默模式，编辑它
-    if (existingMsgId && !isSilent) {
-        await safeEditMessage(client, chatId, { message: existingMsgId, text });
-    } else if (replyTo) {
-        // 否则发一条新消息
+    // 新任务触发（有 replyTo）：强制删除旧追踪器，并发送一条新的追踪器消息
+    // 进度更新触发（无 replyTo）：尽量编辑现有追踪器，避免刷屏
+    if (replyTo) {
         await deleteLastStatusMessage(client, chatId);
         const msg = await safeReply(replyTo, { message: text }) as Api.Message;
         if (msg) {
             updateLastStatusMessageId(chatId, msg.id, false);
         }
+        return;
+    }
+
+    // 无 replyTo 时，仅在已有状态消息且非静默模式时编辑
+    if (existingMsgId && !isSilent) {
+        await safeEditMessage(client, chatId, { message: existingMsgId, text });
     }
 }
 
