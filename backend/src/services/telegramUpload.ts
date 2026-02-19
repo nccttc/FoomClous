@@ -317,6 +317,17 @@ function getConsolidatedBatches(chatId: string): ConsolidatedBatchEntry[] {
     return Array.from(map.values());
 }
 
+
+
+/** Check if this is a start of a new session and cleanup old statuses */
+async function checkAndResetSession(client: TelegramClient, chatId: Api.TypeEntityLike) {
+    const chatIdStr = chatId.toString();
+    // If no active tasks are recorded, this is a new session
+    if (getActiveBatchCount(chatIdStr) === 0 && getActiveUploadCount(chatIdStr) === 0) {
+        await deleteLastStatusMessage(client, chatId);
+    }
+}
+
 /** 更新合并状态消息 */
 async function refreshConsolidatedMessage(client: TelegramClient, chatId: Api.TypeEntityLike, replyTo?: Api.Message) {
     const chatIdStr = chatId.toString();
@@ -663,6 +674,9 @@ async function processBatchUpload(client: TelegramClient, mediaGroupId: string):
         folderName = new Date().toISOString().replace(/[:.]/g, '-');
     }
 
+    // 新会话重置检查
+    await checkAndResetSession(client, queue.chatId!);
+
     // 注册批量任务到追踪器
     registerBatch(chatIdStr, batchId, {
         id: batchId,
@@ -844,6 +858,11 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
         // 为每个单文件上传创建唯一 ID
         const uploadId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         const chatIdStr = message.chatId!.toString();
+
+        // 新会话重置检查
+        if (message.chatId) {
+            await checkAndResetSession(client, message.chatId);
+        }
 
         // 注册到合并追踪器
         registerUpload(chatIdStr, uploadId, {

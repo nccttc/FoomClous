@@ -487,13 +487,13 @@ export function buildConsolidatedStatus(
         batches.forEach(batch => {
             const isDone = batch.completed === batch.totalFiles;
             const icon = isDone ? (batch.failed === 0 ? '✅' : '⚠️') : '📂';
-            const progress = generateProgressBar(batch.completed, batch.totalFiles);
-
-            lines.push(`${icon} **${batch.folderName}**`);
-            lines.push(`    ${progress} (${batch.completed}/${batch.totalFiles})`);
-            if (isDone || batch.successful > 0 || batch.failed > 0) {
+            if (!isDone) {
+                const progress = generateProgressBar(batch.completed, batch.totalFiles);
+                lines.push(`    ${progress} (${batch.completed}/${batch.totalFiles})`);
+            } else {
                 lines.push(`    ✅ ${batch.successful}  ❌ ${batch.failed}`);
             }
+
             if (batch.queuePending && batch.queuePending > 0 && !isDone) {
                 lines.push(`    ⏳ 队列: ${batch.queuePending}`);
             }
@@ -515,7 +515,8 @@ export function buildConsolidatedStatus(
                     icon = '⬇️';
                     if (file.downloaded !== undefined && file.total) {
                         const pct = Math.round((file.downloaded / file.total) * 100);
-                        detail = `下载 ${pct}%`;
+                        const progressBar = generateProgressBar(file.downloaded, file.total);
+                        detail = `${progressBar} ${pct}%`;
                     } else {
                         detail = '下载中...';
                     }
