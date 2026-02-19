@@ -684,7 +684,7 @@ async function processBatchUpload(client: TelegramClient, mediaGroupId: string):
     for (const file of queue.files) {
         const caption = file.message.message || file.message.text || '';
         if (caption && caption.trim()) {
-            folderName = caption.trim();
+            folderName = caption.split(/\r?\n/)[0].trim();
             break;
         }
     }
