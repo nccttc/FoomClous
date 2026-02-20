@@ -15,6 +15,8 @@ export const pool = new Pool({
     connectionString: process.env.DATABASE_URL || 'postgresql://foomclous:password@localhost:5432/foomclous',
 });
 
+let initializationPromise: Promise<void> | null = null;
+
 async function ensureFavoritesColumn() {
     try {
         await pool.query(`ALTER TABLE files ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN DEFAULT false`);
@@ -87,7 +89,10 @@ async function initializeDatabase() {
 pool.on('connect', async () => {
     console.log('📦 已连接到 PostgreSQL 数据库');
     // 自动初始化数据库表结构
-    await initializeDatabase();
+    if (!initializationPromise) {
+        initializationPromise = initializeDatabase();
+    }
+    await initializationPromise;
 });
 
 pool.on('error', (err) => {
