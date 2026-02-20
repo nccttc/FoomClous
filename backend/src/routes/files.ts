@@ -48,7 +48,7 @@ router.get('/', async (_req: Request, res: Response) => {
 });
 
 // 获取单个文件信息
-router.get('/:id', async (req: Request, res: Response) => {
+router.get('/:id([0-9a-fA-F-]{36})', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const result = await query('SELECT * FROM files WHERE id = $1', [id]);
@@ -74,7 +74,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 });
 
 // 预览文件
-router.get('/:id/preview', async (req: Request, res: Response) => {
+router.get('/:id([0-9a-fA-F-]{36})/preview', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const result = await query('SELECT * FROM files WHERE id = $1', [id]);
@@ -155,7 +155,7 @@ router.get('/:id/preview', async (req: Request, res: Response) => {
 });
 
 // 获取下载链接 (用于前端直接通过浏览器下载，不经过后端流式传输)
-router.get('/:id/download-url', async (req: Request, res: Response) => {
+router.get('/:id([0-9a-fA-F-]{36})/download-url', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const result = await query('SELECT * FROM files WHERE id = $1', [id]);
@@ -199,7 +199,7 @@ router.get('/:id/download-url', async (req: Request, res: Response) => {
 });
 
 // 下载文件 (支持签名 URL 访问)
-router.get('/:id/download', async (req: Request, res: Response) => {
+router.get('/:id([0-9a-fA-F-]{36})/download', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         console.log(`[Download] Starting download for ID: ${id}`);
@@ -257,7 +257,7 @@ router.get('/:id/download', async (req: Request, res: Response) => {
 });
 
 // 获取缩略图
-router.get('/:id/thumbnail', async (req: Request, res: Response) => {
+router.get('/:id([0-9a-fA-F-]{36})/thumbnail', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const result = await query('SELECT * FROM files WHERE id = $1', [id]);
@@ -294,7 +294,7 @@ router.get('/:id/thumbnail', async (req: Request, res: Response) => {
 });
 
 // 删除文件
-router.delete('/:id', async (req: Request, res: Response) => {
+router.delete('/:id([0-9a-fA-F-]{36})', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const result = await query('SELECT * FROM files WHERE id = $1', [id]);
@@ -437,7 +437,7 @@ function formatRelativeTime(date: Date): string {
 }
 
 // 重命名文件
-router.patch('/:id/rename', async (req: Request, res: Response) => {
+router.patch('/:id([0-9a-fA-F-]{36})/rename', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const { name } = req.body;
@@ -524,7 +524,7 @@ router.patch('/rename-folder', async (req: Request, res: Response) => {
 });
 
 // 创建分享链接
-router.post('/:id/share', async (req: Request, res: Response) => {
+router.post('/:id([0-9a-fA-F-]{36})/share', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const { password, expiration } = req.body;
@@ -603,7 +603,7 @@ router.get('/favorites', async (_req: Request, res: Response) => {
 });
 
 // 切换文件收藏状态
-router.post('/:id/favorite', async (req: Request, res: Response) => {
+router.post('/:id([0-9a-fA-F-]{36})/favorite', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         

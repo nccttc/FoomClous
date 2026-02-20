@@ -467,6 +467,7 @@ function App() {
   const filteredFiles = useMemo(() => {
     return files.filter(file => {
       const matchesCategory =
+        currentCategory === "favorites" ||
         currentCategory === "all" ||
         (currentCategory === "media" && ["image", "video", "audio"].includes(file.type)) ||
         (currentCategory === "image" && file.type === "image") ||
