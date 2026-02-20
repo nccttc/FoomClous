@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { Pencil, Download, Trash2 } from "lucide-react";
+import { Pencil, Download, Trash2, Star } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
@@ -104,6 +104,8 @@ export const createFileMenuItems = (
     t: (key: string) => string,
     onRename?: () => void,
     onDownload?: () => void,
+    onToggleFavorite?: () => void,
+    isFavorite: boolean = false,
     onDelete?: () => void
 ): ContextMenuItem[] => {
     const items: ContextMenuItem[] = [];
@@ -124,6 +126,14 @@ export const createFileMenuItems = (
         });
     }
 
+    if (onToggleFavorite) {
+        items.push({
+            label: isFavorite ? (t("file.unfavorite") || "取消收藏") : (t("file.favorite") || "收藏"),
+            icon: <Star className={`h-4 w-4 ${isFavorite ? 'fill-current' : ''}`} />,
+            onClick: onToggleFavorite,
+        });
+    }
+
     if (onDelete) {
         items.push({
             label: t("file.delete") || "删除",
@@ -140,6 +150,8 @@ export const createFileMenuItems = (
 export const createFolderMenuItems = (
     t: (key: string) => string,
     onRename?: () => void,
+    onToggleFavorite?: () => void,
+    isFavorite: boolean = false,
     onDelete?: () => void
 ): ContextMenuItem[] => {
     const items: ContextMenuItem[] = [];
@@ -158,6 +170,14 @@ export const createFolderMenuItems = (
             icon: <Trash2 className="h-4 w-4" />,
             onClick: onDelete,
             variant: "danger",
+        });
+    }
+
+    if (onToggleFavorite) {
+        items.splice(onDelete ? items.length - 1 : items.length, 0, {
+            label: isFavorite ? (t("file.unfavorite") || "取消收藏") : (t("file.favorite") || "收藏"),
+            icon: <Star className={`h-4 w-4 ${isFavorite ? 'fill-current' : ''}`} />,
+            onClick: onToggleFavorite,
         });
     }
 

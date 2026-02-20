@@ -488,6 +488,18 @@ class FileAPI {
         return response.json();
     }
 
+    // 切换文件夹收藏状态
+    async toggleFolderFavorite(folderName: string): Promise<{ success: boolean; isFavorite: boolean }> {
+        const response = await fetch(`${API_BASE}/api/files/folders/favorite`, {
+            method: 'POST',
+            headers: getHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ folderName }),
+        });
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        if (!response.ok) throw new Error('切换文件夹收藏状态失败');
+        return response.json();
+    }
+
     // 健康检查
     async healthCheck(): Promise<{ status: string; timestamp: string }> {
         const response = await fetch(`${API_BASE}/health`);

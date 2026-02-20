@@ -225,6 +225,34 @@ function App() {
     }
   };
 
+  const handleToggleFolderFavorite = async (folderName: string) => {
+    try {
+      const result = await fileApi.toggleFolderFavorite(folderName);
+      if (result.success) {
+        setFiles(prev => prev.map(file =>
+          file.folder === folderName ? { ...file, is_favorite: result.isFavorite } : file
+        ));
+        setNotification({
+          show: true,
+          message: result.isFavorite ? '已添加到收藏' : '已取消收藏',
+          type: 'success'
+        });
+      }
+    } catch (error: any) {
+      if (error.message === 'UNAUTHORIZED') {
+        authService.clearToken();
+        setIsAuthenticated(false);
+      } else {
+        console.error('切换文件夹收藏状态失败:', error);
+        setNotification({
+          show: true,
+          message: '操作失败',
+          type: 'error'
+        });
+      }
+    }
+  };
+
   const startUpload = async (newFiles: File[], folder?: string) => {
     // 1. 创建队列项
     const newItems: QueueItem[] = newFiles.map(file => ({
@@ -817,6 +845,7 @@ function App() {
                                   folder={folder}
                                   onClick={() => setCurrentFolder(folder.name)}
                                   onRename={() => setRenamingFolder(folder.name)}
+                                  onToggleFavorite={() => handleToggleFolderFavorite(folder.name)}
                                   onDelete={() => {
                                     setSelectedFolderNames([folder.name]);
                                     setSelectedFileIds([]);

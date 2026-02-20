@@ -47,6 +47,54 @@ router.get('/', async (_req: Request, res: Response) => {
     }
 });
 
+router.post('/folders/favorite', async (req: Request, res: Response) => {
+    try {
+        const { folderName } = req.body;
+        if (!folderName || typeof folderName !== 'string') {
+            return res.status(400).json({ error: '参数错误' });
+        }
+
+        const { storageManager } = await import('../services/storage.js');
+        const activeAccountId = storageManager.getActiveAccountId();
+        const provider = storageManager.getProvider();
+
+        let selectQuery = '';
+        let updateQuery = '';
+        let params: any[] = [];
+
+        if (provider.name === 'local') {
+            selectQuery = 'SELECT COUNT(*)::int as cnt, BOOL_AND(is_favorite)::boolean as all_fav FROM files WHERE source = \'local\' AND folder = $1';
+            updateQuery = 'UPDATE files SET is_favorite = $1, updated_at = NOW() WHERE source = \'local\' AND folder = $2';
+            params = [folderName];
+        } else {
+            selectQuery = 'SELECT COUNT(*)::int as cnt, BOOL_AND(is_favorite)::boolean as all_fav FROM files WHERE storage_account_id = $1 AND folder = $2';
+            updateQuery = 'UPDATE files SET is_favorite = $1, updated_at = NOW() WHERE storage_account_id = $2 AND folder = $3';
+            params = [activeAccountId, folderName];
+        }
+
+        const selectResult = await query(selectQuery, params);
+        const count = selectResult.rows[0]?.cnt ?? 0;
+
+        if (!count) {
+            return res.status(404).json({ error: '文件夹不存在或为空' });
+        }
+
+        const allFav = !!selectResult.rows[0]?.all_fav;
+        const newFavorite = !allFav;
+
+        if (provider.name === 'local') {
+            await query(updateQuery, [newFavorite, folderName]);
+        } else {
+            await query(updateQuery, [newFavorite, activeAccountId, folderName]);
+        }
+
+        res.json({ success: true, isFavorite: newFavorite });
+    } catch (error) {
+        console.error('切换文件夹收藏状态失败:', error);
+        res.status(500).json({ error: '切换文件夹收藏状态失败' });
+    }
+});
+
 // 获取单个文件信息
 router.get('/:id([0-9a-fA-F-]{36})', async (req: Request, res: Response) => {
     try {

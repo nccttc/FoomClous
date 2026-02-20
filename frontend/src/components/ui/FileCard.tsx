@@ -236,6 +236,8 @@ export const FileCard = ({
                     t,
                     onRename,
                     () => handleDownload(),
+                    onToggleFavorite,
+                    !!file.is_favorite,
                     onDelete
                 )}
             />

@@ -27,6 +27,7 @@ export const FolderCard = ({
     folder,
     onClick,
     onRename,
+    onToggleFavorite,
     onDelete,
     isSelectionMode = false,
     isSelected = false,
@@ -35,6 +36,7 @@ export const FolderCard = ({
     folder: FolderData;
     onClick: () => void;
     onRename?: () => void;
+    onToggleFavorite?: () => void;
     onDelete?: () => void;
     isSelectionMode?: boolean;
     isSelected?: boolean;
@@ -54,6 +56,8 @@ export const FolderCard = ({
         acc[file.type] = (acc[file.type] || 0) + 1;
         return acc;
     }, {} as Record<string, number>);
+
+    const isFavorite = folder.files.length > 0 && folder.files.every(f => !!f.is_favorite);
 
     const handleCardClick = () => {
         if (isSelectionMode) {
@@ -162,6 +166,8 @@ export const FolderCard = ({
                 items={createFolderMenuItems(
                     t,
                     onRename,
+                    onToggleFavorite,
+                    isFavorite,
                     onDelete
                 )}
             />
