@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Folder, Image as ImageIcon, Video, Music, FileText } from "lucide-react";
+import { Folder, Image as ImageIcon, Video, Music, FileText, Star } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type FileData } from "../../services/api";
@@ -99,6 +99,12 @@ export const FolderCard = ({
                     ) : (
                         <div className="flex flex-col items-center gap-2">
                             <Folder className="h-12 w-12 text-primary/40 group-hover:text-primary/60 transition-colors" />
+                        </div>
+                    )}
+
+                    {!isSelectionMode && isFavorite && (
+                        <div className="absolute top-2 left-2 bg-yellow-400/90 backdrop-blur-md p-1.5 rounded-full border border-yellow-300/50 shadow-sm z-10">
+                            <Star className="h-3 w-3 text-yellow-700 fill-current" />
                         </div>
                     )}
 
