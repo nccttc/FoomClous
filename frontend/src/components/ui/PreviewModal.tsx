@@ -5,10 +5,12 @@ import type { FileData } from "./FileCard";
 import { Button } from "./Button";
 import { useEffect, useState } from "react";
 import { fileApi } from "../../services/api";
+import { MobileMenu } from "./MobileMenu";
 
 interface PreviewModalProps {
     file: FileData | null;
     onClose: () => void;
+    onToggleFavorite?: (fileId: string) => void;
 }
 
 // 浏览器原生支持的视频格式
@@ -81,8 +83,17 @@ const VideoPlayer = ({ file }: { file: FileData }) => {
     );
 };
 
-export const PreviewModal = ({ file, onClose }: PreviewModalProps) => {
+export const PreviewModal = ({ file, onClose, onToggleFavorite }: PreviewModalProps) => {
     const [scale, setScale] = useState(1);
+    const [mobileMenu, setMobileMenu] = useState<{
+        isOpen: boolean;
+        x: number;
+        y: number;
+    }>({
+        isOpen: false,
+        x: 0,
+        y: 0
+    });
 
     useEffect(() => {
         const handleEsc = (e: KeyboardEvent) => {
@@ -109,6 +120,22 @@ export const PreviewModal = ({ file, onClose }: PreviewModalProps) => {
         } catch (error) {
             console.error("下载失败", error);
         }
+    };
+
+    const handleMobileMenuOpen = (e: React.TouchEvent | React.MouseEvent) => {
+        e.preventDefault();
+        const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+        const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+        
+        setMobileMenu({
+            isOpen: true,
+            x: clientX,
+            y: clientY
+        });
+    };
+
+    const handleMobileMenuClose = () => {
+        setMobileMenu(prev => ({ ...prev, isOpen: false }));
     };
 
     const handleZoomIn = (e: React.MouseEvent) => {
@@ -254,9 +281,28 @@ export const PreviewModal = ({ file, onClose }: PreviewModalProps) => {
                     </div>
 
                     {/* 内容区域 - 占满剩余空间并居中显示 */}
-                    <div className="flex-1 flex items-center justify-center overflow-hidden">
+                    <div 
+                        className="flex-1 flex items-center justify-center overflow-hidden"
+                        onTouchStart={handleMobileMenuOpen}
+                    >
                         <PreviewContent />
                     </div>
+
+                    {/* 移动端菜单 */}
+                    <MobileMenu
+                        isOpen={mobileMenu.isOpen}
+                        x={mobileMenu.x}
+                        y={mobileMenu.y}
+                        isFavorite={file?.is_favorite || false}
+                        onDelete={() => {
+                            // 这里可以添加删除功能
+                        }}
+                        onToggleFavorite={() => {
+                            onToggleFavorite?.(file?.id || '');
+                        }}
+                        onDownload={handleDownload}
+                        onClose={handleMobileMenuClose}
+                    />
                 </motion.div>
             )}
         </AnimatePresence>

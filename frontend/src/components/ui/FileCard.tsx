@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Download, Eye, FileText, Image as ImageIcon, Music, Video, Trash2, Cloud, HardDrive, Database, Package, Network } from "lucide-react";
+import { Download, Eye, FileText, Image as ImageIcon, Music, Video, Trash2, Cloud, HardDrive, Database, Package, Network, Star } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "./Button";
@@ -24,6 +24,7 @@ export const FileCard = ({
     onPreview,
     onDelete,
     onRename,
+    onToggleFavorite,
     isSelectionMode = false,
     isSelected = false,
     onSelect
@@ -32,6 +33,7 @@ export const FileCard = ({
     onPreview?: () => void;
     onDelete?: () => void;
     onRename?: () => void;
+    onToggleFavorite?: () => void;
     isSelectionMode?: boolean;
     isSelected?: boolean;
     onSelect?: (id: string) => void;
@@ -140,10 +142,18 @@ export const FileCard = ({
 
                     {/* Storage Source Indicator */}
                     {!isSelectionMode && (
-                        <div className="absolute top-2 right-2 bg-black/40 backdrop-blur-md px-2 py-1 rounded-full flex items-center gap-1.5 text-[10px] font-medium text-white/90 border border-white/10 shadow-sm z-10">
-                            <SourceIcon className="h-3 w-3" />
-                            <span>{sourceLabel}</span>
-                        </div>
+                        <>
+                            {/* Favorite Indicator */}
+                            {file.is_favorite && (
+                                <div className="absolute top-2 left-2 bg-yellow-400/90 backdrop-blur-md p-1.5 rounded-full border border-yellow-300/50 shadow-sm z-10">
+                                    <Star className="h-3 w-3 text-yellow-700 fill-current" />
+                                </div>
+                            )}
+                            <div className="absolute top-2 right-2 bg-black/40 backdrop-blur-md px-2 py-1 rounded-full flex items-center gap-1.5 text-[10px] font-medium text-white/90 border border-white/10 shadow-sm z-10">
+                                <SourceIcon className="h-3 w-3" />
+                                <span>{sourceLabel}</span>
+                            </div>
+                        </>
                     )}
 
                     {/* Hover Overlay Actions */}
@@ -173,6 +183,22 @@ export const FileCard = ({
                             >
                                 <Download className="h-4 w-4" />
                             </Button>
+                            {onToggleFavorite && (
+                                <Button
+                                    size="icon"
+                                    variant="secondary"
+                                    className={`h-9 w-9 rounded-full bg-white/95 hover:bg-white shadow-lg transition-all hover:scale-110 ${
+                                        file.is_favorite ? 'text-yellow-500 hover:bg-yellow-50' : 'text-gray-500'
+                                    }`}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onToggleFavorite();
+                                    }}
+                                    title={file.is_favorite ? '取消收藏' : '收藏'}
+                                >
+                                    <Star className={`h-4 w-4 ${file.is_favorite ? 'fill-current' : ''}`} />
+                                </Button>
+                            )}
                             {onDelete && (
                                 <Button
                                     size="icon"

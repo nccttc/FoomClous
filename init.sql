@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS files (
     source VARCHAR(50) DEFAULT 'web',
     folder VARCHAR(255),
     storage_account_id UUID REFERENCES storage_accounts(id),
+    is_favorite BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -26,6 +27,7 @@ CREATE TABLE IF NOT EXISTS files (
 CREATE INDEX IF NOT EXISTS idx_files_type ON files(type);
 CREATE INDEX IF NOT EXISTS idx_files_created_at ON files(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_files_folder ON files(folder);
+CREATE INDEX IF NOT EXISTS idx_files_is_favorite ON files(is_favorite);
 
 -- API Keys 表
 CREATE TABLE IF NOT EXISTS api_keys (

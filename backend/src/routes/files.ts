@@ -564,4 +564,67 @@ router.post('/:id/share', async (req: Request, res: Response) => {
     }
 });
 
+// 获取收藏的文件
+router.get('/favorites', async (_req: Request, res: Response) => {
+    try {
+        const { storageManager } = await import('../services/storage.js');
+        const activeAccountId = storageManager.getActiveAccountId();
+        const provider = storageManager.getProvider();
+
+        let queryStr = '';
+        let params: any[] = [];
+
+        if (provider.name === 'local') {
+            // 本地存储模式：只显示 source = 'local' 的收藏文件
+            queryStr = 'SELECT * FROM files WHERE source = \'local\' AND is_favorite = true ORDER BY created_at DESC';
+        } else {
+            // 云盘模式：只显示当前激活账户的收藏文件
+            queryStr = 'SELECT * FROM files WHERE storage_account_id = $1 AND is_favorite = true ORDER BY created_at DESC';
+            params = [activeAccountId];
+        }
+
+        const result = await query(queryStr, params);
+
+        const files = result.rows.map(file => ({
+            ...file,
+            size: formatFileSize(file.size),
+            date: formatRelativeTime(file.created_at),
+            thumbnailUrl: file.thumbnail_path
+                ? getSignedUrl(file.id, 'thumbnail')
+                : undefined,
+            previewUrl: getSignedUrl(file.id, 'preview'),
+        }));
+
+        res.json(files);
+    } catch (error) {
+        console.error('获取收藏文件失败:', error);
+        res.status(500).json({ error: '获取收藏文件失败' });
+    }
+});
+
+// 切换文件收藏状态
+router.post('/:id/favorite', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        
+        // 检查文件是否存在
+        const result = await query('SELECT is_favorite FROM files WHERE id = $1', [id]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: '文件不存在' });
+        }
+
+        const currentFavorite = result.rows[0].is_favorite;
+        const newFavorite = !currentFavorite;
+
+        // 更新收藏状态
+        await query('UPDATE files SET is_favorite = $1, updated_at = NOW() WHERE id = $2', [newFavorite, id]);
+
+        res.json({ success: true, isFavorite: newFavorite });
+    } catch (error) {
+        console.error('切换收藏状态失败:', error);
+        res.status(500).json({ error: '切换收藏状态失败' });
+    }
+});
+
 export default router;

@@ -1,14 +1,16 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { MoreVertical, Trash2 } from "lucide-react";
+import { MoreVertical, Trash2, Star } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "./Button";
 
 interface FileMenuProps {
     onDelete: () => void;
+    onToggleFavorite?: () => void;
+    isFavorite?: boolean;
 }
 
-export const FileMenu = ({ onDelete }: FileMenuProps) => {
+export const FileMenu = ({ onDelete, onToggleFavorite, isFavorite = false }: FileMenuProps) => {
     const [isOpen, setIsOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
     const { t } = useTranslation();
@@ -59,6 +61,17 @@ export const FileMenu = ({ onDelete }: FileMenuProps) => {
                         >
                             <Trash2 className="h-4 w-4" />
                             {t("file.delete") || "Delete"}
+                        </button>
+                        <button
+                            className="w-full flex items-center gap-2 px-2.5 py-2 text-sm text-yellow-600 dark:text-yellow-400 hover:bg-yellow-50 dark:hover:bg-yellow-500/10 rounded-md transition-colors text-left font-medium"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onToggleFavorite?.();
+                                setIsOpen(false);
+                            }}
+                        >
+                            <Star className={`h-4 w-4 ${isFavorite ? 'fill-current' : ''}`} />
+                            {isFavorite ? (t("file.unfavorite") || "Unfavorite") : (t("file.favorite") || "Favorite")}
                         </button>
                     </motion.div>
                 )}

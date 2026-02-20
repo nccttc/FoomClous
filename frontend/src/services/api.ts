@@ -20,6 +20,7 @@ export interface FileData {
     source?: string;
     folder?: string;
     created_at: string;
+    is_favorite?: boolean;
 }
 
 export interface StorageStats {
@@ -463,6 +464,27 @@ class FileAPI {
             const error = await response.json();
             throw new Error(error.error || '重命名文件夹失败');
         }
+        return response.json();
+    }
+
+    // 获取收藏的文件
+    async getFavoriteFiles(): Promise<FileData[]> {
+        const response = await fetch(`${API_BASE}/api/files/favorites`, {
+            headers: getHeaders(),
+        });
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        if (!response.ok) throw new Error('获取收藏文件失败');
+        return response.json();
+    }
+
+    // 切换文件收藏状态
+    async toggleFavorite(fileId: string): Promise<{ success: boolean; isFavorite: boolean }> {
+        const response = await fetch(`${API_BASE}/api/files/${fileId}/favorite`, {
+            method: 'POST',
+            headers: getHeaders({ 'Content-Type': 'application/json' }),
+        });
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        if (!response.ok) throw new Error('切换收藏状态失败');
         return response.json();
     }
 

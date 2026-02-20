@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Folder, Settings, Menu, Image as ImageIcon, Video, Music, FileText, ChevronRight, X } from "lucide-react";
+import { Folder, Settings, Menu, Image as ImageIcon, Video, Music, FileText, ChevronRight, X, Star } from "lucide-react";
 import { Button } from "../ui/Button";
 import { cn } from "../../lib/utils";
 import { useTranslation } from "react-i18next";
@@ -76,7 +76,7 @@ export const AppLayout = ({ children, onCategoryChange, storageStats }: { childr
             ]
         },
         { id: "document", icon: FileText, label: t("sidebar.categories.docs") },
-
+        { id: "favorites", icon: Star, label: t("sidebar.favorites") || "Favorites" },
         { id: "settings", icon: Settings, label: t("sidebar.settings") },
     ];
 

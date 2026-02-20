@@ -122,11 +122,18 @@ function App() {
   }, []);
 
   // 加载文件列表
-  const loadFiles = useCallback(async () => {
+  const loadFiles = useCallback(async (category: string = currentCategory) => {
     if (!isAuthenticated) return;
     try {
       setLoading(true);
-      const data = await fileApi.getFiles();
+      let data: FileData[];
+      
+      if (category === 'favorites') {
+        data = await fileApi.getFavoriteFiles();
+      } else {
+        data = await fileApi.getFiles();
+      }
+      
       setFiles(data);
     } catch (error: any) {
       if (error.message === 'UNAUTHORIZED') {
@@ -138,7 +145,7 @@ function App() {
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, currentCategory]);
 
   // 加载存储统计
   const loadStorageStats = useCallback(async () => {
@@ -175,6 +182,13 @@ function App() {
       loadStorageConfig();
     }
   }, [isAuthenticated, loadFiles, loadStorageStats, loadStorageConfig]);
+
+  // 监听分类变化
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadFiles(currentCategory);
+    }
+  }, [currentCategory, isAuthenticated, loadFiles]);
 
   // 登录处理
   const handleLogin = async (password: string) => {
@@ -327,12 +341,13 @@ function App() {
     }
 
     try {
-      setLoading(true);
       await fileApi.batchDelete(selectedFileIds, selectedFolderNames);
-      setIsSelectionMode(false);
+      // 刷新列表和存储统计
+      await Promise.all([loadFiles(), loadStorageStats()]);
+      // 清空选择状态
       setSelectedFileIds([]);
       setSelectedFolderNames([]);
-      await Promise.all([loadFiles(), loadStorageStats()]);
+      setIsSelectionMode(false);
     } catch (error: any) {
       if (error.message === 'UNAUTHORIZED') {
         authService.clearToken();
@@ -342,6 +357,40 @@ function App() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 切换收藏状态
+  const handleToggleFavorite = async (fileId: string) => {
+    try {
+      const result = await fileApi.toggleFavorite(fileId);
+      if (result.success) {
+        // 更新本地文件列表中的收藏状态
+        setFiles(prev => prev.map(file => 
+          file.id === fileId 
+            ? { ...file, is_favorite: result.isFavorite }
+            : file
+        ));
+        
+        // 显示通知
+        setNotification({
+          show: true,
+          message: result.isFavorite ? '已添加到收藏' : '已取消收藏',
+          type: 'success'
+        });
+      }
+    } catch (error: any) {
+      if (error.message === 'UNAUTHORIZED') {
+        authService.clearToken();
+        setIsAuthenticated(false);
+      } else {
+        console.error('切换收藏状态失败:', error);
+        setNotification({
+          show: true,
+          message: '操作失败',
+          type: 'error'
+        });
+      }
     }
   };
 
@@ -686,6 +735,7 @@ function App() {
                               onPreview={() => setSelectedFile(file)}
                               onDelete={() => verifyDelete(file)}
                               onRename={() => setRenamingFile(file)}
+                              onToggleFavorite={() => handleToggleFavorite(file.id)}
                               isSelectionMode={isSelectionMode}
                               isSelected={selectedFileIds.includes(file.id)}
                               onSelect={toggleFileSelection}
@@ -806,6 +856,7 @@ function App() {
                                     onPreview={() => setSelectedFile(file)}
                                     onDelete={() => verifyDelete(file)}
                                     onRename={() => setRenamingFile(file)}
+                                    onToggleFavorite={() => handleToggleFavorite(file.id)}
                                     isSelectionMode={isSelectionMode}
                                     isSelected={selectedFileIds.includes(file.id)}
                                     onSelect={toggleFileSelection}
@@ -853,7 +904,11 @@ function App() {
           )}
         </div>
 
-        <PreviewModal file={selectedFile} onClose={() => setSelectedFile(null)} />
+        <PreviewModal 
+    file={selectedFile} 
+    onClose={() => setSelectedFile(null)} 
+    onToggleFavorite={handleToggleFavorite}
+/>
 
         {/* 这里的 isOpen 逻辑是：如果有正在上传的，或者用户没点关闭（且有内容），就显示？ */}
         {/* 现在的逻辑是：多文件触发 setIsQueueModalOpen(true)，关闭则 false。 */}
