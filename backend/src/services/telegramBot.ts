@@ -345,6 +345,8 @@ export async function initTelegramBot(): Promise<void> {
 
                 if (!chatId) return;
 
+                console.log(`🤖 Received text from ${senderId}: ${text}`);
+
                 // Commands
                 if (text === '/start') {
                     await handleStart(message, senderId);
