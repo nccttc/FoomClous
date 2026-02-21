@@ -36,25 +36,6 @@ export const StorageWidget = ({ stats, used, total }: StorageWidgetProps) => {
                         {stats.server.used} / {stats.server.total}
                     </p>
                 </div>
-
-                {/* FoomClous Usage */}
-                <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                        <h4 className="text-xs font-medium text-muted-foreground">FoomClous</h4>
-                        <span className="text-xs text-muted-foreground">{stats.foomclous.fileCount} 文件</span>
-                    </div>
-                    <div className="h-1.5 w-full rounded-full bg-secondary overflow-hidden">
-                        <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${Math.min(stats.foomclous.usedPercent, 100)}%` }}
-                            transition={{ duration: 1, ease: "easeOut" }}
-                            className="h-full bg-blue-500 rounded-full"
-                        />
-                    </div>
-                    <p className="mt-1 text-[10px] text-muted-foreground">
-                        已用 {stats.foomclous.used}
-                    </p>
-                </div>
             </div>
         );
     }
