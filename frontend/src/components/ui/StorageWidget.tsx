@@ -36,6 +36,17 @@ export const StorageWidget = ({ stats, used, total }: StorageWidgetProps) => {
                         {stats.server.used} / {stats.server.total}
                     </p>
                 </div>
+
+                {/* FoomClous Usage */}
+                <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                        <h4 className="text-xs font-medium text-muted-foreground">FoomClous</h4>
+                        <span className="text-xs text-muted-foreground">{stats.foomclous.fileCount} 文件</span>
+                    </div>
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                        已用 {stats.foomclous.used}
+                    </p>
+                </div>
             </div>
         );
     }
