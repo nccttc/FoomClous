@@ -105,9 +105,45 @@ docker compose -f docker-compose.prod.yml up -d
 | `/list` | 查看最近上传的文件列表 |
 | `/tasks` | 查看当前传输任务队列 (包含下载进度) |
 | `/delete <ID>` | 删除指定文件 (支持 ID 前缀) |
+| `/ytdlp <url>` | 解析视频链接并下载到存储源 (yt-dlp) |
 
 > [!TIP]
 > **多文件上传优化**: 当一次性转发超过 **9** 个文件时，Bot 会自动进入**静默模式**，在后台排队处理以避免刷屏，你可以随时使用 `/tasks` 查看实时进度。
+
+### 📥 视频下载命令 (`/ytdlp`)
+
+通过集成 [yt-dlp](https://github.com/yt-dlp/yt-dlp)，你可以直接在 Telegram Bot 中发送视频链接，让服务器自动解析并下载到当前存储源。
+
+**依赖说明**：
+- 官方后端镜像已内置 `yt-dlp` 与 `ffmpeg`，无需额外安装。
+- 若自行构建镜像，请确保 Dockerfile 中已安装 `yt-dlp` 可执行文件。
+
+**环境变量**（`.env` 可选）：
+| 变量名 | 说明 | 默认值 |
+| :--- | :--- | :--- |
+| `YTDLP_BIN` | yt-dlp 可执行文件路径 | `yt-dlp`（使用系统 PATH） |
+| `YTDLP_WORK_DIR` | 下载临时目录 | `./data/uploads/ytdlp` |
+| `YTDLP_MAX_CONCURRENT` | 并发下载任务数 | `1` |
+
+**使用方法**：
+1. 在 Telegram 私聊中向 Bot 发送：
+   ```
+   /ytdlp https://example.com/video
+   ```
+2. Bot 会回复“开始解析并下载…”表示任务已创建。
+3. 下载完成后自动上传到当前存储源，并回复：
+   - ✅ 成功：`已上传
+文件: xxx.mp4
+大小: 12.5 MB
+存储源: local`
+   - ❌ 失败：`下载/上传失败
+原因: ...`
+
+**注意事项**：
+- 仅支持单个链接，不支持播放列表。
+- 需要已通过 `/start` 验证身份。
+- 链接必须以 `http://` 或 `https://` 开头。
+- 下载后的文件会自动入库并生成缩略图，在前端 `ytdlp` 文件夹中可见。
 
 ---
 
