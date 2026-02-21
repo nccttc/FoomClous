@@ -1,69 +1,132 @@
-﻿# FoomClous 瀛樺偍婧愰厤缃寚鍗?鈽侊笍
+# FoomClous 存储源配置指南 ☁️
 
-FoomClous 鏀寔澶氱瀛樺偍鍚庣銆傛偍鍙互鏍规嵁瀵归€熷害銆佸閲忓拰鎴愭湰鐨勯渶姹傦紝閫夋嫨鏈湴瀛樺偍鎴栦簯瀛樺偍銆?
+FoomClous 支持多种存储后端。您可以根据对速度、容量和成本的需求，选择本地存储或云存储。
+
 ---
 
-## 1. 鏈湴瀛樺偍 (Local Storage)
+## 1. 本地存储 (Local Storage)
 
-鏂囦欢鐩存帴淇濆瓨鍦ㄨ繍琛?FoomClous 鐨勬湇鍔″櫒纭洏涓婏紝閫熷害鏈€蹇紝浣嗗彈闄愪簬鏈嶅姟鍣ㄧ鐩樺ぇ灏忋€?
-- **閰嶇疆**: 鏃犻渶鐗规畩鎿嶄綔銆?- **鎸佷箙鍖?*: 濡傛灉浣跨敤 Docker锛岃纭繚鎸傝浇浜嗘寕杞藉嵎锛堥粯璁ゅ凡闆嗘垚鍦?`docker-compose.yml` 涓級銆?
+文件直接保存在运行 FoomClous 的服务器硬盘上，速度最快，但受限于服务器磁盘大小。
+
+- **配置**: 无需特殊操作。
+- **持久化**: 如果使用 Docker，请确保挂载了挂载卷（默认已集成在 `docker-compose.yml` 中）。
+
 ---
 
 ## 2. Microsoft OneDrive
 
-閫傚悎鎷ユ湁 Office 365 璁㈤槄鐨勭敤鎴凤紝鎻愪緵 1TB - 5TB 鐨勫粔浠烽珮閫熷瓨鍌ㄣ€?
-### 鑾峰彇鍑嵁
-1. 璁块棶 [Azure Portal](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade)銆?2. 鍒涘缓鈥滄柊娉ㄥ唽鈥濓紝**閲嶅畾鍚?URI** 閫夋嫨 `Web` 骞跺～鍐欙細`https://鎮ㄧ殑鍩熷悕/api/storage/onedrive/callback`銆?3. 鑾峰彇 **Client ID** 鍜?**Tenant ID**锛堥€氬父涓?`common`锛夈€?4. 鍦ㄢ€滆瘉涔﹀拰瀵嗙爜鈥濅腑鐢熸垚 **Client Secret**銆?
-### 寮€鍚姛鑳?- **璁剧疆 -> 瀛樺偍婧?-> OneDrive**锛岃緭鍏ュ嚟鎹苟鐐瑰嚮鈥滀繚瀛樺苟鎺堟潈鈥濄€?
+适合拥有 Office 365 订阅的用户，提供 1TB - 5TB 的廉价高速存储。
+
+### 获取凭据
+1. 访问 [Azure Portal](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade)。
+2. 创建“新注册”，**重定向 URI** 选择 `Web` 并填写：`https://您的域名/api/storage/onedrive/callback`。
+3. 获取 **Client ID** 和 **Tenant ID**（通常为 `common`）。
+4. 在“证书和密码”中生成 **Client Secret**。
+
+### 开启功能
+- **设置 -> 存储源 -> OneDrive**，输入凭据并点击“保存并授权”。
+
 ---
 
-## 3. S3 鍏煎瀛樺偍 (AWS S3, MinIO, R2)
+## 3. S3 兼容存储 (AWS S3, MinIO, R2)
 
-鏀寔鎵€鏈夊吋瀹?S3 鍗忚鐨勫璞″瓨鍌紝濡?Cloudflare R2, Backblaze B2, MinIO 绛夈€?
-### 閰嶇疆淇℃伅
-- **Endpoint**: 鑺傜偣鍦板潃 (濡?`https://s3.us-east-1.amazonaws.com`)銆?- **Region**: 鍖哄煙 (濡?`us-east-1`)銆?- **AccessKey / SecretKey**: 璁块棶瀵嗛挜銆?- **Bucket**: 瀛樺偍妗跺悕绉般€?- **Force Path Style**: 濡傛灉浣跨敤 MinIO 鎴栨煇浜涚鏈変簯锛屽彲鑳介渶瑕佸嬀閫夈€?
+支持所有兼容 S3 协议的对象存储，如 Cloudflare R2, Backblaze B2, MinIO 等。
+
+### 配置信息
+- **Endpoint**: 节点地址 (如 `https://s3.us-east-1.amazonaws.com`)。
+- **Region**: 区域 (如 `us-east-1`)。
+- **AccessKey / SecretKey**: 访问密钥。
+- **Bucket**: 存储桶名称。
+- **Force Path Style**: 如果使用 MinIO 或某些私有云，可能需要勾选。
+
 ---
 
-## 4. WebDAV (鍧氭灉浜? InfiniCLOUD)
+## 4. WebDAV (坚果云, InfiniCLOUD)
 
-鏈€閫氱敤鐨勭綉缁滃瓨鍌ㄥ崗璁€?
-### 閰嶇疆淇℃伅
-- **URL**: WebDAV 鏈嶅姟鍣ㄥ湴鍧€ (濡?`https://dav.jianguoyun.com/dav/`)銆?- **Username**: 鐧诲綍璐﹀彿銆?- **Password**: 搴旂敤涓撶敤鍙ｄ护锛堥潪鐧诲綍瀵嗙爜锛夈€?
+最通用的网络存储协议。
+
+### 配置信息
+- **URL**: WebDAV 服务器地址 (如 `https://dav.jianguoyun.com/dav/`)。
+- **Username**: 登录账号。
+- **Password**: 应用专用口令（非登录密码）。
+
 ---
 
 ## 5. Google Drive
 
-閫傚悎闇€瑕佸ぇ閲忓瓨鍌ㄧ┖闂翠笖鎷ユ湁 Google 璐﹀彿鐨勭敤鎴枫€?
-### 绗竴姝ワ細鍒涘缓 Google Cloud 椤圭洰
-1. 璁块棶 [Google Cloud Console](https://console.cloud.google.com/)銆?2. 鐐瑰嚮灞忓箷椤堕儴鐨勯」鐩€夋嫨鍣紝閫夋嫨 **鈥滄柊寤洪」鐩€?*銆?3. 杈撳叆椤圭洰鍚嶇О锛堝 `FoomClous-Storage`锛夛紝鐐瑰嚮 **鈥滃垱寤衡€?*銆?
-### 绗簩姝ワ細鍚敤 Google Drive API
-1. 鍦ㄦ帶鍒跺彴宸︿晶鑿滃崟涓紝閫夋嫨 **鈥淎PI 鍜屾湇鍔♀€?> 鈥滃簱鈥?*銆?2. 鎼滅储 `Google Drive API` 骞剁偣鍑昏繘鍏ワ紝鐐瑰嚮 **鈥滃惎鐢ㄢ€?*銆?
-### 绗笁姝ワ細鍝佺墝濉戦€?(閲嶈)
-1. 鍦ㄥ乏渚ц彍鍗曢€夋嫨 **鈥淎PI 鍜屾湇鍔♀€?> 鈥淥Auth 鏉冮檺璇锋眰椤甸潰鈥?> 鈥滃搧鐗屽閫犫€?*銆?2. 鍦ㄥ簲鐢ㄤ俊鎭噷濉叆 **搴旂敤鍚嶇О** 鍜?**鐢ㄦ埛鏀寔閭**銆?3. 鍦?**鈥滃凡鑾锋巿鏉冪殑缃戝煙鈥?* 濉叆鎮ㄨ嚜宸辩殑鍩熷悕銆?4. 鐐瑰嚮 **鈥滀繚瀛樺苟缁х画鈥?*銆?
-### 绗洓姝ワ細鐩爣瀵硅薄
-1. 鍦?**鈥滅洰鏍囧璞♀€?* 鏉垮潡锛岀偣鍑?**鈥? ADD USERS鈥?*銆?2. 娣诲姞鎮ㄨ嚜宸辩殑 **Google 閭鍦板潃**銆?3. *鎻愮ず锛氬鏋滀笉娣诲姞娴嬭瘯鐢ㄦ埛锛屽湪鎺堟潈鏃朵細閬囧埌 `403: access_denied` 閿欒銆?
+适合需要大量存储空间且拥有 Google 账号的用户。
 
-### 绗簲姝ワ細鍒涘缓鍑嵁 (Client ID & Secret)
-1. 鍦ㄥ乏渚ц彍鍗曢€夋嫨 **鈥淎PI 鍜屾湇鍔♀€?> 鈥滃嚟鎹€?*銆?2. 鐐瑰嚮椤堕儴 **鈥滃垱寤哄嚟鎹€?> 鈥淥Auth 瀹㈡埛绔?ID鈥?*銆?3. **搴旂敤绫诲瀷**閫夋嫨 **鈥淲eb 搴旂敤绋嬪簭鈥?*銆?4. **宸叉巿鏉冪殑閲嶅畾鍚?URI**锛?   - 鐐瑰嚮 **鈥滄坊鍔?URI鈥?*锛岃緭鍏ワ細`https://鎮ㄧ殑鍩熷悕/api/storage/google-drive/callback`
-   - *娉ㄦ剰锛氬繀椤讳笌鎮ㄩ潰鏉挎樉绀虹殑涓€鑷达紝鏀寔 https銆?
-5. 鐐瑰嚮 **鈥滃垱寤衡€?*锛岃褰曚笅 **瀹㈡埛绔?ID** 鍜?**瀹㈡埛绔瘑閽?*銆?   - *鎻愮ず锛氬缓璁偣鍑?**鈥滀笅杞?JSON鈥?* 澶囦唤锛屽瘑閽ヤ竴鏃﹀叧闂獥鍙ｅ皢鏃犳硶鍐嶆鏌ョ湅瀹屾暣鍐呭銆?
+### 第一步：创建 Google Cloud 项目
+1. 访问 [Google Cloud Console](https://console.cloud.google.com/)。
+2. 点击屏幕顶部的项目选择器，选择 **“新建项目”**。
+3. 输入项目名称（如 `FoomClous-Storage`），点击 **“创建”**。
 
-### 绗叚姝ワ細鍦?FoomClous 涓畬鎴愭巿鏉?1. 鐧诲綍 FoomClous锛岃繘鍏?**鈥滆缃€?> 鈥滃瓨鍌ㄦ簮鈥?> 鈥淕oogle Drive鈥?*銆?2. 濉叆 **Client ID** 鍜?**Client Secret**锛岀偣鍑?**鈥滀繚瀛樺苟鎺堟潈鈥?*銆?3. 鍦ㄦ巿鏉冮〉闈紝鐐瑰嚮 **鈥滈珮绾р€?* 鎴?**鈥滅户缁€?*锛堝閬囧畨鍏ㄨ鍛婏級骞跺畬鎴愭巿鏉冦€?
+### 第二步：启用 Google Drive API
+1. 在控制台左侧菜单中，选择 **“API 和服务” > “库”**。
+2. 搜索 `Google Drive API` 并点击进入，点击 **“启用”**。
+
+### 第三步：品牌塑造 (重要)
+1. 在左侧菜单选择 **“API 和服务” > “OAuth 权限请求页面” > “品牌塑造”**。
+2. 在应用信息里填入 **应用名称** 和 **用户支持邮箱**。
+3. 在 **“已获授权的网域”** 填入您自己的域名。
+4. 点击 **“保存并继续”**。
+
+### 第四步：目标对象
+1. 在 **“目标对象”** 板块，点击 **“+ ADD USERS”**。
+2. 添加您自己的 **Google 邮箱地址**。
+3. *提示：如果不添加测试用户，在授权时会遇到 `403: access_denied` 错误。*
+
+### 第五步：创建凭据 (Client ID & Secret)
+1. 在左侧菜单选择 **“API 和服务” > “凭据”**。
+2. 点击顶部 **“创建凭据” > “OAuth 客户端 ID”**。
+3. **应用类型**选择 **“Web 应用程序”**。
+4. **已授权的重定向 URI**：
+   - 点击 **“添加 URI”**，输入：`https://您的域名/api/storage/google-drive/callback`
+   - *注意：必须与您面板显示的一致，支持 https。*
+5. 点击 **“创建”**，记录下 **客户端 ID** 和 **客户端密钥**。
+   - *提示：建议点击 **“下载 JSON”** 备份，密钥一旦关闭窗口将无法再次查看完整内容。*
+
+### 第六步：在 FoomClous 中完成授权
+1. 登录 FoomClous，进入 **“设置” > “存储源” > “Google Drive”**。
+2. 填入 **Client ID** 和 **Client Secret**，点击 **“保存并授权”**。
+3. 在授权页面，点击 **“高级”** 或 **“继续”**（如遇安全警告）并完成授权。
+
 ---
 
-## 6. 闃块噷浜?OSS
+## 6. 阿里云 OSS
 
-鍥藉唴鐢ㄦ埛鎺ㄨ崘锛屽搷搴旈€熷害蹇紝鎴愭湰浣庛€?
-### 璇︾粏閰嶇疆姝ラ
+国内用户推荐，响应速度快，成本低。
 
-#### 1. 鍒涘缓瀛樺偍妗?(Bucket)
-1. 鐧诲綍 [闃块噷浜?OSS 鎺у埗鍙癩(https://oss.console.aliyun.com/)銆?2. 鐐瑰嚮 **鈥滃垱寤?Bucket鈥?*銆?3. **鍚嶇О**: 鑷畾涔夛紙濡?`foomclous-data`锛夈€?4. **鍦板煙**: 閫夋嫨璺濈鎮ㄦ渶杩戠殑鍦板煙锛堜緥濡傦細鍗庝笢 1 涓婃捣锛夈€?   - **閲嶈**: 璁颁綇鍦板煙 ID锛屽 `oss-cn-shanghai`銆?5. **璇诲啓鏉冮檺**: 寤鸿閫夋嫨 **鈥滅鏈夆€?*锛團oomClous 浼氶€氳繃鍚庣绛惧悕璁块棶锛岀‘淇濆畨鍏級銆?
-#### 2. 鑾峰彇 AccessKey (鎺ㄨ崘浣跨敤 RAM 鐢ㄦ埛)
-1. 杩涘叆 [RAM 璁块棶鎺у埗鍙癩(https://ram.console.aliyun.com/)銆?2. 鍒涘缓涓€涓?**鈥滅敤鎴封€?*锛屽嬀閫?**鈥淥penAPI 璋冪敤璁块棶鈥?*銆?3. 鍒涘缓鎴愬姛鍚庯紝淇濆瓨濂?**AccessKey ID** 鍜?**AccessKey Secret**銆?4. **娣诲姞鏉冮檺**: 缁欒鐢ㄦ埛鎺堜簣 `AliyunOSSFullAccess` 鏉冮檺銆?
-#### 3. 濉啓閰嶇疆椤?- **Region**: 鎮ㄧ殑鍦板煙 ID (渚嬪 `oss-cn-shanghai`)銆?- **AccessKey ID**: 鎮ㄤ繚瀛樼殑 ID銆?- **AccessKey Secret**: 鎮ㄤ繚瀛樼殑 Secret銆?- **Bucket**: 鎮ㄥ垱寤虹殑瀛樺偍妗跺悕绉般€?
+### 详细配置步骤
+
+#### 1. 创建存储桶 (Bucket)
+1. 登录 [阿里云 OSS 控制台](https://oss.console.aliyun.com/)。
+2. 点击 **“创建 Bucket”**。
+3. **名称**: 自定义（如 `foomclous-data`）。
+4. **地域**: 选择距离您最近的地域（例如：华东 1 上海）。
+   - **重要**: 记住地域 ID，如 `oss-cn-shanghai`。
+5. **读写权限**: 建议选择 **“私有”**（FoomClous 会通过后端签名访问，确保安全）。
+
+#### 2. 获取 AccessKey (推荐使用 RAM 用户)
+1. 进入 [RAM 访问控制台](https://ram.console.aliyun.com/)。
+2. 创建一个 **“用户”**，勾选 **“OpenAPI 调用访问”**。
+3. 创建成功后，保存好 **AccessKey ID** 和 **AccessKey Secret**。
+4. **添加权限**: 给该用户授予 `AliyunOSSFullAccess` 权限。
+
+#### 3. 填写配置项
+- **Region**: 您的地域 ID (例如 `oss-cn-shanghai`)。
+- **AccessKey ID**: 您保存的 ID。
+- **AccessKey Secret**: 您保存的 Secret。
+- **Bucket**: 您创建的存储桶名称。
+
 ---
 
-## 馃攧 濡備綍鍒囨崲娲诲姩璐︽埛锛?
-1. 杩涘叆 **璁剧疆 -> 瀛樺偍婧愯缃?*銆?2. 鍦ㄥ垪琛ㄤ腑鎵惧埌鎮ㄦ兂浣跨敤鐨勮处鎴枫€?3. 鐐瑰嚮 **鈥滃垏鎹㈠埌姝よ处鎴封€?*銆?4. **鎻愮ず**锛氭柊涓婁紶鐨勬枃浠朵細瀛樺叆鏂拌处鎴凤紝宸蹭笂浼犵殑鏂囦欢浠嶄細閫氳繃鍘熻矾寰勮闂€?
+## 🔄 如何切换活动账户？
+
+1. 进入 **设置 -> 存储源设置**。
+2. 在列表中找到您想使用的账户。
+3. 点击 **“切换到此账户”**。
+4. **提示**：新上传的文件会存入新账户，已上传的文件仍会通过原路径访问。
+
 ---
-[杩斿洖鏂囨。涓績](./README.md)
+[返回文档中心](./README.md)
