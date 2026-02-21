@@ -1,0 +1,60 @@
+# YT-DLP 下载专区
+
+FoomClous 集成了 [yt-dlp](https://github.com/yt-dlp/yt-dlp)，可以通过 Telegram Bot 发送链接，让服务器自动解析并下载，然后上传到当前选中的存储源。
+
+---
+
+## 1. 使用方式（Telegram Bot）
+
+1. 先与 Bot 对话并完成身份验证：
+   - `/start`
+
+2. 发送下载命令：
+   ```
+   /ytdlp https://example.com/video
+   ```
+
+3. Bot 会提示任务开始，并可通过 `/tasks` 查看队列进度。
+
+---
+
+## 2. 前端如何查看下载结果
+
+前端左侧工具栏提供独立分区 **YT-DLP**：
+
+- 进入该分区后会以“扁平列表”展示下载结果
+- 不再需要进入 `ytdlp` 文件夹（即使后端仍使用 `folder=ytdlp` 进行归类，前端在该分区会直接把它们平铺展示）
+
+---
+
+## 3. 依赖与环境变量
+
+### 依赖说明
+
+- 官方后端镜像通常已内置 `yt-dlp` 与 `ffmpeg`
+- 若自行构建镜像，请确保运行环境中可执行：
+  - `yt-dlp`
+  - `ffmpeg`
+
+### 可选环境变量（.env）
+
+| 变量名 | 说明 | 默认值 |
+| :--- | :--- | :--- |
+| `YTDLP_BIN` | yt-dlp 可执行文件路径 | `yt-dlp` |
+| `YTDLP_WORK_DIR` | 下载临时目录 | `./data/uploads/ytdlp` |
+| `YTDLP_MAX_CONCURRENT` | 并发下载任务数 | `1` |
+
+---
+
+## 4. 常见问题
+
+### 4.1 下载后前端无法预览/没有缩略图？
+
+- 图片/视频缩略图依赖后端的 MIME 类型识别与 `ffmpeg/sharp` 处理
+- 如果遇到“暂不支持预览此类型文件”，优先检查：
+  - 后端是否已正确识别 `mime_type` 为 `video/*` 或 `image/*`
+  - 环境内是否能正常执行 `ffmpeg`
+
+---
+
+[返回文档中心](./README.md)
