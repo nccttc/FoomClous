@@ -4,6 +4,7 @@ import path from 'path';
 import { spawn } from 'child_process';
 import { v4 as uuidv4 } from 'uuid';
 import os from 'os';
+import axios from 'axios';
 import { query } from '../db/index.js';
 import { storageManager } from './storage.js';
 import { formatBytes, getFileType, getMimeTypeFromFilename, sanitizeFilename } from '../utils/telegramUtils.js';
@@ -62,6 +63,148 @@ function safeRmDir(dir: string) {
         }
     } catch {
     }
+}
+
+function isTwitterStatusUrl(u: string): boolean {
+    return /^https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\//i.test(u) && /\/status\//i.test(u);
+}
+
+function extractTwitterStatusId(u: string): string | null {
+    const match = u.match(/\/(?:i\/web\/status|[^/]+\/status)\/(\d+)/i);
+    return match?.[1] || null;
+}
+
+function extractPbsImageUrlsFromHtml(html: string): string[] {
+    const urls = new Set<string>();
+
+    const re = /https:\/\/pbs\.twimg\.com\/media\/[^\s"'<>]+/gi;
+    const matches = html.match(re) || [];
+
+    for (const raw of matches) {
+        try {
+            const u = new URL(raw);
+            u.hash = '';
+            if (!u.searchParams.has('name')) u.searchParams.set('name', 'orig');
+            if (u.searchParams.has('name')) u.searchParams.set('name', 'orig');
+            urls.add(u.toString());
+        } catch {
+            urls.add(raw);
+        }
+    }
+
+    return Array.from(urls);
+}
+
+function extractPbsImageUrlsFromSyndicationJson(payload: any): string[] {
+    const urls = new Set<string>();
+    try {
+        const photos = payload?.photos;
+        if (Array.isArray(photos)) {
+            for (const p of photos) {
+                if (p?.url && typeof p.url === 'string' && /pbs\.twimg\.com\/media\//i.test(p.url)) {
+                    urls.add(p.url);
+                }
+            }
+        }
+    } catch {
+    }
+    return Array.from(urls);
+}
+
+async function downloadUrlToFile(url: string, destPath: string): Promise<void> {
+    const res = await axios.get(url, {
+        responseType: 'stream',
+        headers: {
+            'user-agent': 'Mozilla/5.0 (compatible; FoomClous/1.0; +https://github.com/nccttc/foomclous)'
+        },
+        timeout: 60_000,
+        maxRedirects: 5,
+        validateStatus: (s) => s >= 200 && s < 400,
+    });
+
+    await new Promise<void>((resolve, reject) => {
+        const w = fs.createWriteStream(destPath);
+        res.data.pipe(w);
+        w.on('finish', () => resolve());
+        w.on('error', reject);
+    });
+}
+
+function guessExtFromPbsUrl(u: string): string {
+    try {
+        const url = new URL(u);
+        const fmt = url.searchParams.get('format');
+        if (fmt && /^[a-z0-9]+$/i.test(fmt)) return `.${fmt.toLowerCase()}`;
+        const p = url.pathname;
+        const ext = path.extname(p);
+        if (ext) return ext;
+    } catch {
+    }
+    return '.jpg';
+}
+
+async function downloadTwitterImagesFallback(tweetUrl: string, taskDir: string): Promise<Array<{ filePath: string; fileName: string; size: number }>> {
+    ensureDir(taskDir);
+
+    const tweetId = extractTwitterStatusId(tweetUrl);
+    if (!tweetId) {
+        throw new Error('无法解析推文 ID');
+    }
+
+    let imageUrls: string[] = [];
+    try {
+        const syndicationUrl = `https://cdn.syndication.twimg.com/tweet-result?id=${tweetId}&lang=en`;
+        const synRes = await axios.get(syndicationUrl, {
+            headers: {
+                'user-agent': 'Mozilla/5.0 (compatible; FoomClous/1.0; +https://github.com/nccttc/foomclous)'
+            },
+            timeout: 30_000,
+            maxRedirects: 5,
+            validateStatus: (s) => s >= 200 && s < 400,
+        });
+        imageUrls = extractPbsImageUrlsFromSyndicationJson(synRes.data);
+    } catch {
+    }
+
+    if (imageUrls.length === 0) {
+        const htmlRes = await axios.get(tweetUrl, {
+            headers: {
+                'user-agent': 'Mozilla/5.0 (compatible; FoomClous/1.0; +https://github.com/nccttc/foomclous)'
+            },
+            timeout: 30_000,
+            maxRedirects: 5,
+            validateStatus: (s) => s >= 200 && s < 400,
+        });
+
+        const html = typeof htmlRes.data === 'string' ? htmlRes.data : String(htmlRes.data);
+        imageUrls = extractPbsImageUrlsFromHtml(html);
+    }
+
+    if (imageUrls.length === 0) {
+        throw new Error('未在推文页面中找到图片资源（可能需要登录或该推文不包含图片）');
+    }
+
+    const results: Array<{ filePath: string; fileName: string; size: number }> = [];
+
+    for (let i = 0; i < imageUrls.length; i++) {
+        const imgUrl = imageUrls[i];
+        const ext = guessExtFromPbsUrl(imgUrl);
+        const fileName = `twitter_${tweetId}_${i + 1}${ext}`;
+        const filePath = path.join(taskDir, fileName);
+
+        await downloadUrlToFile(imgUrl, filePath);
+
+        const st = await fs.promises.stat(filePath);
+        if (st.size <= 0) {
+            continue;
+        }
+        results.push({ filePath, fileName, size: st.size });
+    }
+
+    if (results.length === 0) {
+        throw new Error('图片下载完成但未生成有效文件');
+    }
+    return results;
 }
 
 function selectPrimaryOutputFile(taskDir: string): { filePath: string; fileName: string; size: number } | null {
@@ -190,22 +333,52 @@ export async function handleYtDlpCommand(message: Api.Message, url: string): Pro
         task.startedAt = Date.now();
 
         try {
-            await runYtDlpDownload(task.url, taskDir);
-            const primary = selectPrimaryOutputFile(taskDir);
-            if (!primary) {
-                throw new Error('下载完成但未找到输出文件');
-            }
-
-            const uploadResult = await uploadDownloadedFile(primary.filePath, primary.fileName);
-
-            task.status = 'success';
-            task.finishedAt = Date.now();
-
-            const text = `✅ 已上传\n\n文件: ${primary.fileName}\n大小: ${formatBytes(uploadResult.size)}\n存储源: ${uploadResult.providerName}`;
-
             try {
-                await message.reply({ message: text });
-            } catch {
+                await runYtDlpDownload(task.url, taskDir);
+                const primary = selectPrimaryOutputFile(taskDir);
+                if (!primary) {
+                    throw new Error('下载完成但未找到输出文件');
+                }
+
+                const uploadResult = await uploadDownloadedFile(primary.filePath, primary.fileName);
+
+                task.status = 'success';
+                task.finishedAt = Date.now();
+
+                const text = `✅ 已上传\n\n文件: ${primary.fileName}\n大小: ${formatBytes(uploadResult.size)}\n存储源: ${uploadResult.providerName}`;
+
+                try {
+                    await message.reply({ message: text });
+                } catch {
+                }
+            } catch (inner: any) {
+                const innerMsg = (inner instanceof Error) ? inner.message : String(inner);
+                const isNoVideo = /No video could be found in this tweet/i.test(innerMsg);
+
+                if (isNoVideo && isTwitterStatusUrl(task.url)) {
+                    const imgs = await downloadTwitterImagesFallback(task.url, taskDir);
+                    let successCount = 0;
+                    let totalSize = 0;
+                    let providerName = '';
+
+                    for (const img of imgs) {
+                        const up = await uploadDownloadedFile(img.filePath, img.fileName);
+                        providerName = up.providerName;
+                        successCount += 1;
+                        totalSize += up.size;
+                    }
+
+                    task.status = 'success';
+                    task.finishedAt = Date.now();
+
+                    const text = `✅ 已上传\n\n图片数量: ${successCount}\n总大小: ${formatBytes(totalSize)}\n存储源: ${providerName || 'unknown'}`;
+                    try {
+                        await message.reply({ message: text });
+                    } catch {
+                    }
+                } else {
+                    throw inner;
+                }
             }
 
         } catch (e: any) {
