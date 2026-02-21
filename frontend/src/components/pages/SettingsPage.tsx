@@ -1515,13 +1515,19 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
                                             </div>
                                         </div>
                                     </div>
-                                    <span className={cn(
-                                        "text-lg font-semibold",
-                                        storageStats.server.usedPercent > 90 ? "text-red-500" :
-                                            storageStats.server.usedPercent > 70 ? "text-yellow-500" : "text-green-500"
-                                    )}>
-                                        {storageStats.server.usedPercent}%
-                                    </span>
+                                    <div className="flex items-center gap-4">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm text-muted-foreground">可用空间</span>
+                                            <span className="text-sm font-medium text-green-600">{storageStats.server.free}</span>
+                                        </div>
+                                        <span className={cn(
+                                            "text-lg font-semibold",
+                                            storageStats.server.usedPercent > 90 ? "text-red-500" :
+                                                storageStats.server.usedPercent > 70 ? "text-yellow-500" : "text-green-500"
+                                        )}>
+                                            {storageStats.server.usedPercent}%
+                                        </span>
+                                    </div>
                                 </div>
                                 <div className="h-3 w-full bg-secondary/50 rounded-full overflow-hidden">
                                     <motion.div
@@ -1557,14 +1563,6 @@ export const SettingsPage = ({ storageStats }: SettingsPageProps) => {
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-                            </div>
-
-                            {/* 可用空间 */}
-                            <div className="mt-4 p-4 bg-muted/30 rounded-xl border border-border/30">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm text-muted-foreground">可用空间</span>
-                                    <span className="text-sm font-medium text-green-600">{storageStats.server.free}</span>
                                 </div>
                             </div>
                         </>
