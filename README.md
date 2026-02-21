@@ -253,6 +253,7 @@ FoomClous/
 ```
 
 ---
+[![Star History Chart](https://api.star-history.com/svg?repos=nccttc/FoomClous&type=date&legend=top-left)](https://www.star-history.com/#nccttc/FoomClous&type=date&legend=top-left)
 
 ## 📄 开源协议
 
