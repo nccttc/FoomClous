@@ -82,15 +82,9 @@ install_docker() {
 
 ensure_docker_and_compose() {
   if ! has_cmd docker; then
-    echo "缺少必要命令：docker" >&2
-    read -r -p "是否自动安装 Docker？(y/N)：" AUTO_INSTALL
-    if [[ "${AUTO_INSTALL}" == "y" || "${AUTO_INSTALL}" == "Y" ]]; then
-      need_root_or_sudo
-      install_docker
-    else
-      echo "已取消。请先安装 Docker 后再运行本脚本。" >&2
-      exit 1
-    fi
+    echo "缺少必要命令：docker，正在尝试自动安装..." >&2
+    need_root_or_sudo
+    install_docker
   fi
 
   if docker compose version >/dev/null 2>&1; then
@@ -102,24 +96,18 @@ ensure_docker_and_compose() {
     return
   fi
 
-  echo "缺少必要命令：docker compose（或 docker-compose）" >&2
-  read -r -p "是否尝试自动安装 Docker Compose？(y/N)：" AUTO_INSTALL_COMPOSE
-  if [[ "${AUTO_INSTALL_COMPOSE}" == "y" || "${AUTO_INSTALL_COMPOSE}" == "Y" ]]; then
-    need_root_or_sudo
-    install_docker
-    if docker compose version >/dev/null 2>&1; then
-      DOCKER_COMPOSE=(docker compose)
-      return
-    fi
-    if has_cmd docker-compose; then
-      DOCKER_COMPOSE=(docker-compose)
-      return
-    fi
-    echo "Docker Compose 安装后仍不可用，请手动检查：docker compose version" >&2
-    exit 1
+  echo "缺少必要命令：docker compose（或 docker-compose），正在尝试自动安装..." >&2
+  need_root_or_sudo
+  install_docker
+  if docker compose version >/dev/null 2>&1; then
+    DOCKER_COMPOSE=(docker compose)
+    return
   fi
-
-  echo "已取消。请先安装 Docker Compose 后再运行本脚本。" >&2
+  if has_cmd docker-compose; then
+    DOCKER_COMPOSE=(docker-compose)
+    return
+  fi
+  echo "Docker Compose 安装后仍不可用，请手动检查：docker compose version" >&2
   exit 1
 }
 
