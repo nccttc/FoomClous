@@ -48,6 +48,17 @@ start_docker_service() {
   fi
 }
 
+wait_for_docker() {
+  local i
+  for i in 1 2 3 4 5; do
+    if docker version >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
 install_docker() {
   local os_id
   os_id="$(detect_os_id)"
@@ -69,8 +80,14 @@ install_docker() {
     echo "将使用 Docker 官方安装脚本进行安装（需要联网下载）。"
     local installer
     installer="$(mktemp)"
-    "${DOWNLOADER[@]}" https://get.docker.com > "${installer}"
-    "${SUDO[@]}" sh "${installer}"
+    "${DOWNLOADER[@]}" https://get.docker.com > "${installer}" || {
+      echo "下载 Docker 安装脚本失败：https://get.docker.com" >&2
+      exit 1
+    }
+    "${SUDO[@]}" sh "${installer}" || {
+      echo "执行 Docker 安装脚本失败。" >&2
+      exit 1
+    }
     rm -f "${installer}" >/dev/null 2>&1 || true
     start_docker_service
     return
@@ -85,6 +102,14 @@ ensure_docker_and_compose() {
     echo "缺少必要命令：docker，正在尝试自动安装..." >&2
     need_root_or_sudo
     install_docker
+    if ! has_cmd docker; then
+      echo "Docker 自动安装后仍未检测到 docker 命令，请手动检查安装是否成功。" >&2
+      exit 1
+    fi
+    if ! wait_for_docker; then
+      echo "Docker 已安装但无法正常工作（daemon 未启动或权限不足）。请检查：systemctl status docker / service docker status" >&2
+      exit 1
+    fi
   fi
 
   if docker compose version >/dev/null 2>&1; then
@@ -99,6 +124,14 @@ ensure_docker_and_compose() {
   echo "缺少必要命令：docker compose（或 docker-compose），正在尝试自动安装..." >&2
   need_root_or_sudo
   install_docker
+  if ! has_cmd docker; then
+    echo "Docker 自动安装后仍未检测到 docker 命令，请手动检查安装是否成功。" >&2
+    exit 1
+  fi
+  if ! wait_for_docker; then
+    echo "Docker 已安装但无法正常工作（daemon 未启动或权限不足）。请检查：systemctl status docker / service docker status" >&2
+    exit 1
+  fi
   if docker compose version >/dev/null 2>&1; then
     DOCKER_COMPOSE=(docker compose)
     return
