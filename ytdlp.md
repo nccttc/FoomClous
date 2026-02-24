@@ -63,6 +63,16 @@ FoomClous 集成了 [yt-dlp](https://github.com/yt-dlp/yt-dlp)，可以通过 Te
 
 很懊恼的漏洞希望大佬解答困惑。
 
+### 4.3 解析X平台视频报错？
+
+- ERROR: [twitter] : No video could be found in this tweet
+
+- 色色视频被X标记，yt-dlp核心无法解析。
+
+<img width="712" height="382" alt="图片" src="https://github.com/user-attachments/assets/a944942f-e675-48e3-8bb0-252e548dc599" />
+
+
+
 ---
 
 [返回文档中心](./README.md)
