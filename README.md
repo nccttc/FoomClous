@@ -51,7 +51,7 @@ vi .env  # 修改 DB_PASSWORD, CORS_ORIGIN 等
 
 ```bash
 # 构建前端 (将 YOUR_API_URL 替换为你的实际地址)
-docker build --build-arg VITE_API_URL=https://your-api.example.com -t foomclous-frontend ./frontend
+docker build --build-arg VITE_API_URL=https://cloud.yourdomain.com -t foomclous-frontend ./frontend
 
 # 构建后端
 docker build -t foomclous-backend ./backend
