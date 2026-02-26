@@ -941,7 +941,7 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
             const chatId = message.chatId;
             const stats = downloadQueue.getStats();
             const totalTasks = stats.active + stats.pending + 1;
-            if (totalTasks >= 9) {
+            if (totalTasks >= 3) {
                 await runStatusAction(chatId, async () => {
                     await ensureSilentNotice(client, message, totalTasks);
                 });
@@ -993,7 +993,7 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
             const lastMsgId = lastStatusMessageIdMap.get(chatIdStr);
 
             const totalTasks = stats.active + stats.pending + 1;
-            if (totalTasks >= 9) {
+            if (totalTasks >= 3) {
                 await ensureSilentNotice(client, message, totalTasks);
 
                 // 静默模式下：把当前新任务计入静默会话总数
