@@ -1,0 +1,112 @@
+import { TOTP, NobleCryptoPlugin, ScureBase32Plugin } from 'otplib';
+import QRCode from 'qrcode';
+import crypto from 'crypto';
+import { getSetting, setSetting } from './settings.js';
+
+// 初始化 TOTP 实例
+const authenticator = new TOTP({
+    crypto: new NobleCryptoPlugin(),
+    base32: new ScureBase32Plugin(),
+});
+
+/**
+ * 获取 TOTP 密钥
+ * 优先级：环境变量 > 数据库
+ */
+async function getTOTPSecret(): Promise<string | null> {
+    // 1. 检查环境变量
+    if (process.env.TOTP_SECRET) {
+        return process.env.TOTP_SECRET;
+    }
+
+    // 2. 检查数据库
+    return await getSetting('totp_secret');
+}
+
+/**
+ * 检查是否启用了 2FA
+ */
+export async function is2FAEnabled(): Promise<boolean> {
+    const secret = await getTOTPSecret();
+    const enabled = await getSetting('2fa_enabled', 'false');
+    return !!secret && enabled === 'true';
+}
+
+/**
+ * 激活 2FA
+ */
+export async function activate2FA(): Promise<void> {
+    await setSetting('2fa_enabled', 'true');
+}
+
+/**
+ * 禁用 2FA
+ */
+export async function disable2FA(): Promise<void> {
+    await setSetting('2fa_enabled', 'false');
+}
+
+/**
+ * 验证 TOTP 令牌
+ */
+export async function verifyTOTP(token: string): Promise<boolean> {
+    const secret = await getTOTPSecret();
+    if (!secret) return true; // 如果未启用 2FA，默认验证通过
+
+    try {
+        const result = await authenticator.verify(token, {
+            secret: secret
+        });
+        return result.valid;
+    } catch (e) {
+        console.error('TOTP 验证失败:', e);
+        return false;
+    }
+}
+
+/**
+ * 生成 TOTP 设置用的二维码
+ * 如果密钥不存在，或者格式不正确，则重新生成并保存到数据库
+ */
+export async function generateOTPAuthUrl(user: string = 'Admin'): Promise<string> {
+    let secret = await getTOTPSecret();
+
+    // 检查密钥是否存在，或者是否看起来像旧的 Hex 格式 (Hex 只有 0-9, A-F)
+    // 标准 Base32 包含 A-Z, 2-7。如果密钥长度是 32 位且只包含 Hex 字符，很有可能是旧的错误格式。
+    const isMalformed = secret && secret.length === 32 && /^[0-9A-F]+$/.test(secret);
+
+    if (!secret || isMalformed) {
+        // 使用 otplib 生成标准 Base32 密钥 (通常为 16 或 32 个字符)
+        secret = authenticator.generateSecret();
+        await setSetting('totp_secret', secret);
+        console.log('✅ 已为系统自动生成标准 Base32 2FA 密钥并存入数据库');
+    }
+
+    const otpauth = authenticator.toURI({
+        label: user,
+        issuer: 'FoomClous',
+        secret: secret
+    });
+
+    return await QRCode.toDataURL(otpauth);
+}
+
+/**
+ * 获取客户端真实 IP 地址
+ * 优先读取 Cloudflare 的真实 IP 头，其次读取标准代理头 x-forwarded-for
+ */
+export function getClientIP(req: any): string {
+    // Cloudflare 真实 IP
+    const cfIP = req.headers['cf-connecting-ip'];
+    if (cfIP) return Array.isArray(cfIP) ? cfIP[0] : cfIP;
+
+    // 标准代理头
+    const xForwardedFor = req.headers['x-forwarded-for'];
+    if (xForwardedFor) {
+        const ips = Array.isArray(xForwardedFor) ? xForwardedFor : xForwardedFor.split(',');
+        return ips[0].trim();
+    }
+
+    // fallback 到 express 自带的 ip
+    return req.ip || '未知';
+}

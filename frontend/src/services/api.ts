@@ -1,0 +1,542 @@
+import { authService } from './auth';
+
+import { API_BASE } from './config';
+
+// 分块大小：50MB（小于 Cloudflare 100MB 限制）
+const CHUNK_SIZE = 50 * 1024 * 1024;
+
+export interface FileData {
+    id: string;
+    name: string;
+    stored_name: string;
+    type: 'image' | 'video' | 'audio' | 'document' | 'other';
+    mime_type: string;
+    size: string;
+    date: string;
+    thumbnailUrl?: string;
+    previewUrl: string;
+    width?: number;
+    height?: number;
+    source?: string;
+    folder?: string;
+    created_at: string;
+    is_favorite?: boolean;
+}
+
+export interface StorageStats {
+    server: {
+        total: string;
+        totalBytes: number;
+        used: string;
+        usedBytes: number;
+        free: string;
+        freeBytes: number;
+        usedPercent: number;
+    };
+    foomclous: {
+        used: string;
+        usedBytes: number;
+        fileCount: number;
+        usedPercent: number;
+    };
+}
+
+export interface UploadProgress {
+    loaded: number;
+    total: number;
+    percent: number;
+}
+
+export interface StorageAccount {
+    id: string;
+    name: string;
+    type: string;
+    is_active: boolean;
+}
+
+// 获取带认证的请求头
+function getHeaders(additionalHeaders: Record<string, string> = {}): HeadersInit {
+    return {
+        ...authService.getAuthHeaders(),
+        ...additionalHeaders,
+    };
+}
+
+class FileAPI {
+    // 获取文件列表
+    async getFiles(): Promise<FileData[]> {
+        const response = await fetch(`${API_BASE}/api/files`, {
+            headers: getHeaders(),
+        });
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        if (!response.ok) throw new Error('获取文件列表失败');
+        return response.json();
+    }
+
+    // 获取单个文件
+    async getFile(id: string): Promise<FileData> {
+        const response = await fetch(`${API_BASE}/api/files/${id}`, {
+            headers: getHeaders(),
+        });
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        if (!response.ok) throw new Error('获取文件信息失败');
+        return response.json();
+    }
+
+    // 智能上传：小文件直传，大文件分块上传
+    async uploadFile(file: File, folder?: string, onProgress?: (progress: UploadProgress) => void): Promise<{ success: boolean; file: FileData }> {
+        // 超过 80MB 使用分块上传（留一些余量）
+        if (file.size > 80 * 1024 * 1024) {
+            return this.chunkedUpload(file, folder, onProgress);
+        }
+        return this.simpleUpload(file, folder, onProgress);
+    }
+
+    // 简单上传（适用于小文件）
+    private simpleUpload(file: File, folder?: string, onProgress?: (progress: UploadProgress) => void): Promise<{ success: boolean; file: FileData }> {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            const formData = new FormData();
+            formData.append('file', file);
+            if (folder) {
+                formData.append('folder', folder);
+            }
+
+            // 进度监听
+            xhr.upload.addEventListener('progress', (event) => {
+                if (event.lengthComputable && onProgress) {
+                    onProgress({
+                        loaded: event.loaded,
+                        total: event.total,
+                        percent: Math.round((event.loaded / event.total) * 100),
+                    });
+                }
+            });
+
+            xhr.addEventListener('load', () => {
+                if (xhr.status === 401) {
+                    reject(new Error('UNAUTHORIZED'));
+                } else if (xhr.status >= 200 && xhr.status < 300) {
+                    try {
+                        resolve(JSON.parse(xhr.responseText));
+                    } catch {
+                        reject(new Error('解析响应失败'));
+                    }
+                } else {
+                    reject(new Error(`上传失败: ${xhr.status}`));
+                }
+            });
+
+            xhr.addEventListener('error', () => {
+                reject(new Error('网络错误'));
+            });
+
+            xhr.addEventListener('abort', () => {
+                reject(new Error('上传已取消'));
+            });
+
+            xhr.open('POST', `${API_BASE}/api/upload`);
+
+            // 添加认证头
+            const token = authService.getToken();
+            if (token) {
+                xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+            }
+
+            xhr.send(formData);
+        });
+    }
+
+    // 分块上传（适用于大文件）
+    private async chunkedUpload(file: File, folder?: string, onProgress?: (progress: UploadProgress) => void): Promise<{ success: boolean; file: FileData }> {
+        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+        let uploadedBytes = 0;
+
+        // 1. 初始化上传
+        const initResponse = await fetch(`${API_BASE}/api/chunked/init`, {
+            method: 'POST',
+            headers: getHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({
+                filename: file.name,
+                totalChunks,
+                mimeType: file.type || 'application/octet-stream',
+                totalSize: file.size,
+                folder,
+            }),
+        });
+
+        if (initResponse.status === 401) throw new Error('UNAUTHORIZED');
+        if (!initResponse.ok) throw new Error('初始化分块上传失败');
+
+        const { uploadId } = await initResponse.json();
+
+        try {
+            // 2. 逐个上传分块
+            for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+                const start = chunkIndex * CHUNK_SIZE;
+                const end = Math.min(start + CHUNK_SIZE, file.size);
+                const chunk = file.slice(start, end);
+
+                const chunkResponse = await fetch(`${API_BASE}/api/chunked/chunk`, {
+                    method: 'POST',
+                    headers: getHeaders({
+                        'Content-Type': 'application/octet-stream',
+                        'X-Upload-Id': uploadId,
+                        'X-Chunk-Index': chunkIndex.toString(),
+                    }),
+                    body: chunk,
+                });
+
+                if (chunkResponse.status === 401) throw new Error('UNAUTHORIZED');
+                if (!chunkResponse.ok) throw new Error(`上传分块 ${chunkIndex + 1}/${totalChunks} 失败`);
+
+                uploadedBytes += chunk.size;
+
+                if (onProgress) {
+                    onProgress({
+                        loaded: uploadedBytes,
+                        total: file.size,
+                        percent: Math.round((uploadedBytes / file.size) * 100),
+                    });
+                }
+            }
+
+            // 3. 完成上传
+            const completeResponse = await fetch(`${API_BASE}/api/chunked/complete`, {
+                method: 'POST',
+                headers: getHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify({ uploadId }),
+            });
+
+            if (completeResponse.status === 401) throw new Error('UNAUTHORIZED');
+            if (!completeResponse.ok) throw new Error('完成分块上传失败');
+
+            return completeResponse.json();
+        } catch (error) {
+            try {
+                await fetch(`${API_BASE}/api/chunked/${uploadId}`, {
+                    method: 'DELETE',
+                    headers: getHeaders(),
+                });
+            } catch {
+                // 忽略取消失败
+            }
+            throw error;
+        }
+    }
+
+    // 批量上传
+    async uploadFiles(files: File[], folder?: string, onProgress?: (fileIndex: number, progress: UploadProgress) => void): Promise<{ success: boolean; files: FileData[] }> {
+        const results: FileData[] = [];
+
+        for (let i = 0; i < files.length; i++) {
+            const result = await this.uploadFile(files[i], folder, (progress) => {
+                onProgress?.(i, progress);
+            });
+            if (result.file) {
+                results.push(result.file);
+            }
+        }
+
+        return { success: true, files: results };
+    }
+
+    // 删除文件
+    async deleteFile(id: string): Promise<{ success: boolean; message: string }> {
+        const response = await fetch(`${API_BASE}/api/files/${id}`, {
+            method: 'DELETE',
+            headers: getHeaders(),
+        });
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        if (!response.ok) throw new Error('删除文件失败');
+        return response.json();
+    }
+
+    // 批量删除
+    async batchDelete(fileIds: string[], folderNames: string[]): Promise<{ success: boolean; message: string }> {
+        const response = await fetch(`${API_BASE}/api/files/batch-delete`, {
+            method: 'POST',
+            headers: getHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ fileIds, folderNames }),
+        });
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        return response.json();
+    }
+
+    // 创建分享链接
+    async createShareLink(fileId: string, password?: string, expiration?: string): Promise<{ link: string }> {
+        const response = await fetch(`${API_BASE}/api/files/${fileId}/share`, {
+            method: 'POST',
+            headers: getHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ password, expiration }),
+        });
+
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || '创建分享链接失败');
+        }
+        return response.json();
+    }
+
+    // 获取下载 URL (直接链接或签名链接)
+    async getDownloadLink(id: string): Promise<string> {
+        const response = await fetch(`${API_BASE}/api/files/${id}/download-url`, {
+            headers: getHeaders(),
+        });
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        if (!response.ok) throw new Error('获取下载链接失败');
+
+        const data = await response.json();
+        if (data.isRelative) {
+            return `${API_BASE}${data.url}`;
+        }
+        return data.url;
+    }
+
+    // 安全下载文件（使用直接链接，不经过 Blob 缓冲）
+    async downloadFile(id: string, fileName: string): Promise<void> {
+        try {
+            const url = await this.getDownloadLink(id);
+
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = fileName; // 尝试设置文件名 (对于跨域链接可能无效，但后端已有 Content-Disposition)
+            // 如果是同源链接 (local signed url)，download 属性有效
+            // 如果是跨域 (OneDrive)，浏览器会根据 URL 或 Headers 决定
+
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (error) {
+            console.error('下载出错:', error);
+            throw error;
+        }
+    }
+
+
+    // 获取存储统计
+    async getStorageStats(): Promise<StorageStats> {
+        const response = await fetch(`${API_BASE}/api/storage/stats`, {
+            headers: getHeaders(),
+        });
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        if (!response.ok) throw new Error('获取存储统计失败');
+        return response.json();
+    }
+
+    // 获取存储配置
+    async getStorageConfig(): Promise<{
+        provider: string;
+        activeAccountId: string | null;
+        accounts: StorageAccount[];
+        redirectUri: string;
+        googleDriveRedirectUri: string;
+    }> {
+        const response = await fetch(`${API_BASE}/api/storage/config`, {
+            headers: getHeaders(),
+        });
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        if (!response.ok) throw new Error('获取存储配置失败');
+        return response.json();
+    }
+
+    // 更新 OneDrive 配置
+    async updateOneDriveConfig(clientId: string, clientSecret: string, refreshToken: string, tenantId: string = 'common', name?: string): Promise<{ success: boolean; message: string }> {
+        const response = await fetch(`${API_BASE}/api/storage/config/onedrive`, {
+            method: 'PUT',
+            headers: getHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ clientId, clientSecret, refreshToken, tenantId, name }),
+        });
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        if (!response.ok) throw new Error('更新配置失败');
+        return response.json();
+    }
+
+    // 添加 Aliyun OSS 账户
+    async addAliyunOSSAccount(name: string, region: string, accessKeyId: string, accessKeySecret: string, bucket: string): Promise<{ success: boolean; message: string; accountId: string }> {
+        const response = await fetch(`${API_BASE}/api/storage/config/aliyun-oss`, {
+            method: 'POST',
+            headers: getHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ name, region, accessKeyId, accessKeySecret, bucket }),
+        });
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || '添加 Aliyun OSS 账户失败');
+        }
+        return response.json();
+    }
+
+    // 添加 S3 账户
+    async addS3Account(name: string, endpoint: string, region: string, accessKeyId: string, accessKeySecret: string, bucket: string, forcePathStyle: boolean = false): Promise<{ success: boolean; message: string; accountId: string }> {
+        const response = await fetch(`${API_BASE}/api/storage/config/s3`, {
+            method: 'POST',
+            headers: getHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ name, endpoint, region, accessKeyId, accessKeySecret, bucket, forcePathStyle }),
+        });
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || '添加 S3 账户失败');
+        }
+        return response.json();
+    }
+
+    // 添加 WebDAV 账户
+    async addWebDAVAccount(name: string, url: string, username?: string, password?: string): Promise<{ success: boolean; message: string; accountId: string }> {
+        const response = await fetch(`${API_BASE}/api/storage/config/webdav`, {
+            method: 'POST',
+            headers: getHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ name, url, username, password }),
+        });
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || '添加 WebDAV 账户失败');
+        }
+        return response.json();
+    }
+
+    // 切换存储提供商或账户
+    async switchStorageProvider(provider: 'local' | 'onedrive' | 'aliyun_oss' | 's3' | 'webdav' | 'google_drive', accountId?: string): Promise<{ success: boolean; message: string }> {
+        const response = await fetch(`${API_BASE}/api/storage/switch`, {
+            method: 'POST',
+            headers: getHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ provider, accountId }),
+        });
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || '切换存储失败');
+        }
+        return response.json();
+    }
+
+    // 获取所有账户
+    async getAccounts(): Promise<StorageAccount[]> {
+        const response = await fetch(`${API_BASE}/api/storage/accounts`, {
+            headers: getHeaders(),
+        });
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        if (!response.ok) throw new Error('获取账户列表失败');
+        return response.json();
+    }
+
+    // 删除账户
+    async deleteAccount(accountId: string): Promise<{ success: boolean; message: string }> {
+        const response = await fetch(`${API_BASE}/api/storage/accounts/${accountId}`, {
+            method: 'DELETE',
+            headers: getHeaders(),
+        });
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || '删除账户失败');
+        }
+        return response.json();
+    }
+
+    // 重命名文件
+    async renameFile(id: string, name: string): Promise<{ success: boolean; name: string }> {
+        const response = await fetch(`${API_BASE}/api/files/${id}/rename`, {
+            method: 'PATCH',
+            headers: getHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ name }),
+        });
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || '重命名失败');
+        }
+        return response.json();
+    }
+
+    // 重命名文件夹
+    async renameFolder(oldName: string, newName: string): Promise<{ success: boolean; name: string }> {
+        const response = await fetch(`${API_BASE}/api/files/rename-folder`, {
+            method: 'PATCH',
+            headers: getHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ oldName, newName }),
+        });
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || '重命名文件夹失败');
+        }
+        return response.json();
+    }
+
+    // 获取收藏的文件
+    async getFavoriteFiles(): Promise<FileData[]> {
+        const response = await fetch(`${API_BASE}/api/files/favorites`, {
+            headers: getHeaders(),
+        });
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        if (!response.ok) throw new Error('获取收藏文件失败');
+        return response.json();
+    }
+
+    // 切换文件收藏状态
+    async toggleFavorite(fileId: string): Promise<{ success: boolean; isFavorite: boolean }> {
+        const response = await fetch(`${API_BASE}/api/files/${fileId}/favorite`, {
+            method: 'POST',
+            headers: getHeaders({ 'Content-Type': 'application/json' }),
+        });
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        if (!response.ok) throw new Error('切换收藏状态失败');
+        return response.json();
+    }
+
+    // 切换文件夹收藏状态
+    async toggleFolderFavorite(folderName: string): Promise<{ success: boolean; isFavorite: boolean }> {
+        const response = await fetch(`${API_BASE}/api/files/folders/favorite`, {
+            method: 'POST',
+            headers: getHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ folderName }),
+        });
+        if (response.status === 401) throw new Error('UNAUTHORIZED');
+        if (!response.ok) throw new Error('切换文件夹收藏状态失败');
+        return response.json();
+    }
+
+    // 健康检查
+    async healthCheck(): Promise<{ status: string; timestamp: string }> {
+        const response = await fetch(`${API_BASE}/health`);
+        if (!response.ok) throw new Error('健康检查失败');
+        return response.json();
+    }
+
+    async getOneDriveAuthUrl(clientId: string, tenantId: string = 'common', redirectUri: string, clientSecret?: string): Promise<{ authUrl: string }> {
+        const response = await fetch(`${API_BASE}/api/storage/config/onedrive/auth-url`, {
+            method: 'POST',
+            headers: getHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ clientId, tenantId, redirectUri, clientSecret }),
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || '获取授权地址失败');
+        }
+
+        return response.json();
+    }
+
+    async getGoogleDriveAuthUrl(clientId: string, clientSecret: string, redirectUri: string): Promise<{ authUrl: string }> {
+        const response = await fetch(`${API_BASE}/api/storage/config/google-drive/auth-url`, {
+            method: 'POST',
+            headers: getHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ clientId, clientSecret, redirectUri }),
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || '获取授权地址失败');
+        }
+
+        return response.json();
+    }
+}
+
+export const fileApi = new FileAPI();
+export default fileApi;

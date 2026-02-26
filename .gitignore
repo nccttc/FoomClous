@@ -1,0 +1,27 @@
+.env
+.env.*
+**/.env
+
+node_modules/
+**/node_modules/
+
+# runtime data
+data/
+**/data/
+
+# build artifacts
+backend/dist/*
+!backend/dist/index.js
+frontend/dist/
+dist/*
+!dist/index.js
+
+# archives
+*.tar.gz
+
+# logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
