@@ -989,6 +989,30 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
             status: 'pending',
         });
 
+        // 先把 media group 登记到合并追踪器里（即使还没开始处理），
+        // 否则短时间内 getOutstandingTaskCount 可能为 0，导致静默模式无法触发。
+        if (message.chatId) {
+            const chatIdStr = message.chatId.toString();
+            const batchId = mediaGroupId;
+            const batchMap = chatActiveBatches.get(chatIdStr);
+            if (!batchMap || !batchMap.has(batchId)) {
+                registerBatch(chatIdStr, batchId, {
+                    id: batchId,
+                    folderName: queue.folderName || 'media-group',
+                    totalFiles: queue.files.length,
+                    completed: 0,
+                    successful: 0,
+                    failed: 0,
+                    providerName: storageManager.getProvider().name,
+                    queuePending: 0,
+                });
+            } else {
+                updateBatch(chatIdStr, batchId, {
+                    totalFiles: queue.files.length,
+                });
+            }
+        }
+
         // 静默模式：多文件转发时也要在阈值下触发静默提示，并统计总任务数
         if (message.chatId) {
             const chatId = message.chatId;
