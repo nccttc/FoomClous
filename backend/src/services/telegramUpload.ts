@@ -44,7 +44,7 @@ async function safeEditMessage(client: TelegramClient, chatId: Api.TypeEntityLik
         const result = await client.editMessage(chatId, params);
         if (process.env.TG_STATUS_DEBUG === '1') {
             const chatIdStr = chatId.toString();
-            const isSilent = lastStatusMessageIsSilent.get(chatIdStr) || silentSessionMap.has(chatIdStr);
+            const isSilent = silentSessionMap.has(chatIdStr);
             console.log(`[TG][status] edit chat=${chatIdStr} msg=${params?.message} silent=${isSilent}`);
         }
         return result;
@@ -62,25 +62,32 @@ async function ensureSilentNotice(client: TelegramClient, message: Api.Message, 
     const chatId = message.chatId;
     if (!chatId) return;
     const chatIdStr = chatId.toString();
-    const lastMsgId = lastStatusMessageIdMap.get(chatIdStr);
+    const silentMsgId = silentNoticeMessageIdMap.get(chatIdStr);
     const now = Date.now();
     const lastTime = lastSilentNotificationTimeMap.get(chatIdStr) || 0;
 
     const silentSessionActive = silentSessionMap.has(chatIdStr);
-    const silentFlagActive = lastStatusMessageIsSilent.get(chatIdStr);
 
-    if (now - lastTime > SILENT_NOTIFICATION_COOLDOWN || !lastMsgId || (silentSessionActive && !silentFlagActive)) {
+    if (!silentSessionActive) {
+        return;
+    }
+
+    if (now - lastTime > SILENT_NOTIFICATION_COOLDOWN || !silentMsgId) {
         if (process.env.TG_STATUS_DEBUG === '1') {
-            console.log(`[TG][silent] ensure chat=${chatIdStr} fileCount=${fileCount} lastMsg=${lastMsgId || 0} sess=${silentSessionActive} flag=${!!silentFlagActive}`);
+            console.log(`[TG][silent] ensure chat=${chatIdStr} fileCount=${fileCount} silentMsg=${silentMsgId || 0} sess=${silentSessionActive}`);
         }
-        await deleteLastStatusMessage(client, chatId);
-        const sMsg = await safeReply(message, {
-            message: buildSilentModeNotice(fileCount)
-        });
-        if (sMsg) {
-            updateLastStatusMessageId(chatId, sMsg.id, true);
-        }
+        const sMsg = await safeReply(message, { message: buildSilentModeNotice(fileCount) });
+        if (sMsg) silentNoticeMessageIdMap.set(chatIdStr, sMsg.id);
         lastSilentNotificationTimeMap.set(chatIdStr, now);
+        return;
+    }
+
+    // Cooldown 内：尽量编辑现有静默提示（如果存在），保证提示持续可见
+    if (silentMsgId) {
+        await safeEditMessage(client, chatId, {
+            message: silentMsgId,
+            text: buildSilentModeNotice(fileCount),
+        });
     }
 }
 
@@ -94,7 +101,7 @@ async function safeReply(message: Api.Message, params: { message: string, button
         const result = await message.reply(params);
         if (process.env.TG_STATUS_DEBUG === '1') {
             const chatIdStr = message.chatId?.toString() || 'unknown';
-            const isSilent = lastStatusMessageIsSilent.get(chatIdStr) || silentSessionMap.has(chatIdStr);
+            const isSilent = silentSessionMap.has(chatIdStr);
             const msgId = (result as any)?.id;
             console.log(`[TG][status] reply chat=${chatIdStr} msg=${msgId} silent=${isSilent}`);
         }
@@ -239,7 +246,7 @@ async function runStatusAction(chatId: Api.TypeEntityLike | undefined, action: (
 
 // 用于追踪每个会话最后一条状态消息 ID 的映射
 const lastStatusMessageIdMap = new Map<string, number>();
-const lastStatusMessageIsSilent = new Map<string, boolean>();
+const silentNoticeMessageIdMap = new Map<string, number>();
 
 interface SilentSession {
     total: number;
@@ -266,19 +273,15 @@ function startSilentSession(chatIdStr: string, total: number): SilentSession {
 
 async function finalizeSilentSessionIfDone(client: TelegramClient, chatId: Api.TypeEntityLike) {
     const chatIdStr = chatId.toString();
-    const isSilent = lastStatusMessageIsSilent.get(chatIdStr) || silentSessionMap.has(chatIdStr);
-    if (!isSilent) return;
+    if (!silentSessionMap.has(chatIdStr)) return;
 
     const s = silentSessionMap.get(chatIdStr);
-    const lastMsgId = lastStatusMessageIdMap.get(chatIdStr);
-    if (!s || !lastMsgId || s.total <= 0) return;
+    const silentMsgId = silentNoticeMessageIdMap.get(chatIdStr);
+    if (!s || !silentMsgId || s.total <= 0) return;
 
     if (s.completed >= s.total) {
         const text = buildSilentAllTasksComplete(s.failed);
-        const result = await safeEditMessage(client, chatId, { message: lastMsgId, text });
-        if (result) {
-            lastStatusMessageIsSilent.set(chatIdStr, false);
-        }
+        await safeEditMessage(client, chatId, { message: silentMsgId, text });
         silentSessionMap.delete(chatIdStr);
     }
 }
@@ -292,8 +295,8 @@ async function deleteLastStatusMessage(client: TelegramClient, chatId: Api.TypeE
     const lastMsgId = lastStatusMessageIdMap.get(chatIdStr);
     if (lastMsgId) {
         if (process.env.TG_STATUS_DEBUG === '1') {
-            const isSilent = lastStatusMessageIsSilent.get(chatIdStr) || silentSessionMap.has(chatIdStr);
-            console.log(`[TG][status] delete chat=${chatIdStr} msg=${lastMsgId} silent=${isSilent}`);
+            const isSilent = silentSessionMap.has(chatIdStr);
+            console.log(`[TG][status] delete chat=${chatIdStr} msg=${lastMsgId} silentSession=${isSilent}`);
         }
         try {
             await client.deleteMessages(chatId, [lastMsgId], { revoke: true });
@@ -301,7 +304,6 @@ async function deleteLastStatusMessage(client: TelegramClient, chatId: Api.TypeE
             // 忽略删除失败的情况
         }
         lastStatusMessageIdMap.delete(chatIdStr);
-        lastStatusMessageIsSilent.delete(chatIdStr);
     }
 }
 
@@ -312,10 +314,9 @@ function updateLastStatusMessageId(chatId: Api.TypeEntityLike | undefined, msgId
     if (!chatId || !msgId) return;
     const chatIdStr = chatId.toString();
     lastStatusMessageIdMap.set(chatIdStr, msgId);
-    lastStatusMessageIsSilent.set(chatIdStr, isSilent);
     if (process.env.TG_STATUS_DEBUG === '1') {
         const sess = silentSessionMap.has(chatIdStr);
-        console.log(`[TG][status] last chat=${chatIdStr} msg=${msgId} isSilent=${isSilent} sess=${sess}`);
+        console.log(`[TG][status] last chat=${chatIdStr} msg=${msgId} sess=${sess}`);
     }
 }
 
@@ -442,7 +443,7 @@ async function refreshConsolidatedMessage(client: TelegramClient, chatId: Api.Ty
     const chatIdStr = chatId.toString();
 
     // 静默模式下不更新合并状态消息，避免覆盖静默通知
-    if (lastStatusMessageIsSilent.get(chatIdStr) || silentSessionMap.has(chatIdStr)) {
+    if (silentSessionMap.has(chatIdStr)) {
         if (process.env.TG_STATUS_DEBUG === '1') {
             console.log(`[TG][consolidated] skip chat=${chatIdStr} reason=silent`);
         }
@@ -456,7 +457,7 @@ async function refreshConsolidatedMessage(client: TelegramClient, chatId: Api.Ty
 
     const text = await buildConsolidatedStatus(files, batches);
     const existingMsgId = lastStatusMessageIdMap.get(chatIdStr);
-    const isSilent = lastStatusMessageIsSilent.get(chatIdStr) || silentSessionMap.has(chatIdStr);
+    const isSilent = silentSessionMap.has(chatIdStr);
 
     // 新任务触发（有 replyTo）：强制删除旧追踪器，并发送一条新的追踪器消息
     // 进度更新触发（无 replyTo）：尽量编辑现有追踪器，避免刷屏
@@ -770,7 +771,7 @@ async function processFileUpload(client: TelegramClient, file: FileUploadItem, q
         if (queue?.chatId) {
             const chatId = queue.chatId;
             const chatIdStr = chatId.toString();
-            if (lastStatusMessageIsSilent.get(chatIdStr) || silentSessionMap.has(chatIdStr)) {
+            if (silentSessionMap.has(chatIdStr)) {
                 const sess = getSilentSession(chatIdStr);
                 sess.completed += 1;
                 if (file.status === 'failed') {
@@ -986,7 +987,7 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
             await runStatusAction(chatId, async () => {
                 const stats = downloadQueue.getStats();
                 const totalTasks = stats.active + stats.pending + 1;
-                const isSilent = lastStatusMessageIsSilent.get(chatIdStr) || silentSessionMap.has(chatIdStr);
+                const isSilent = silentSessionMap.has(chatIdStr);
                 if (isSilent || totalTasks >= 3) {
                     const sess = isSilent ? getSilentSession(chatIdStr) : startSilentSession(chatIdStr, totalTasks);
                     sess.total = Math.max(sess.total, totalTasks);
@@ -1038,7 +1039,7 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
             const lastMsgId = lastStatusMessageIdMap.get(chatIdStr);
 
             const totalTasks = stats.active + stats.pending + 1;
-            const isSilent = lastStatusMessageIsSilent.get(chatIdStr) || silentSessionMap.has(chatIdStr);
+            const isSilent = silentSessionMap.has(chatIdStr);
             if (isSilent || totalTasks >= 3) {
                 const sess = isSilent ? getSilentSession(chatIdStr) : startSilentSession(chatIdStr, totalTasks);
                 sess.total = Math.max(sess.total, totalTasks);
@@ -1060,7 +1061,7 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
         });
 
         const stats = downloadQueue.getStats();
-        const isSilent = lastStatusMessageIsSilent.get(chatIdStr) || silentSessionMap.has(chatIdStr);
+        const isSilent = silentSessionMap.has(chatIdStr);
         if (!useConsolidated() && statusMsg && (stats.active >= 2 || stats.pending > 0) && !isSilent) {
             await runStatusAction(chatId, async () => {
                 await safeEditMessage(client, chatId, {
@@ -1079,7 +1080,7 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
 
             updateUploadPhase(chatId.toString(), uploadId, { phase: 'downloading', downloaded, total });
 
-            if (lastStatusMessageIsSilent.get(chatIdStr) || silentSessionMap.has(chatIdStr)) {
+            if (silentSessionMap.has(chatIdStr)) {
                 return;
             }
 
@@ -1121,7 +1122,7 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
                     await runStatusAction(chatId, async () => {
                         await refreshConsolidatedMessage(client, chatId);
                     });
-                } else if (statusMsg && !(lastStatusMessageIsSilent.get(chatIdStr) || silentSessionMap.has(chatIdStr))) {
+                } else if (statusMsg && !silentSessionMap.has(chatIdStr)) {
                     await runStatusAction(chatId, async () => {
                         await safeEditMessage(client, chatId, {
                             message: statusMsg!.id,
@@ -1166,7 +1167,7 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
                     await runStatusAction(chatId, async () => {
                         await refreshConsolidatedMessage(client, chatId);
                     });
-                } else if (statusMsg && !(lastStatusMessageIsSilent.get(chatIdStr) || silentSessionMap.has(chatIdStr))) {
+                } else if (statusMsg && !silentSessionMap.has(chatIdStr)) {
                     await runStatusAction(chatId, async () => {
                         await client.editMessage(chatId, {
                             message: statusMsg!.id,
@@ -1201,7 +1202,7 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
                     await runStatusAction(chatId, async () => {
                         await refreshConsolidatedMessage(client, chatId);
                     });
-                } else if (statusMsg && !(lastStatusMessageIsSilent.get(chatIdStr) || silentSessionMap.has(chatIdStr))) {
+                } else if (statusMsg && !silentSessionMap.has(chatIdStr)) {
                     await runStatusAction(chatId, async () => {
                         await client.editMessage(chatId, {
                             message: statusMsg!.id,
@@ -1214,7 +1215,7 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
 
             if (!success) {
                 // 静默模式失败计数
-                if (lastStatusMessageIsSilent.get(chatIdStr) || silentSessionMap.has(chatIdStr)) {
+                if (silentSessionMap.has(chatIdStr)) {
                     const sess = getSilentSession(chatIdStr);
                     sess.completed += 1;
                     sess.failed += 1;
@@ -1225,7 +1226,7 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
                     await runStatusAction(chatId, async () => {
                         await refreshConsolidatedMessage(client, chatId);
                     });
-                } else if (statusMsg && !(lastStatusMessageIsSilent.get(chatIdStr) || silentSessionMap.has(chatIdStr))) {
+                } else if (statusMsg && !silentSessionMap.has(chatIdStr)) {
                     await runStatusAction(chatId, async () => {
                         await client.editMessage(chatId, {
                             message: statusMsg!.id,
@@ -1239,7 +1240,7 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
                 }
             } else {
                 // 静默模式成功计数
-                if (lastStatusMessageIsSilent.get(chatIdStr) || silentSessionMap.has(chatIdStr)) {
+                if (silentSessionMap.has(chatIdStr)) {
                     const sess = getSilentSession(chatIdStr);
                     sess.completed += 1;
                     await finalizeSilentSessionIfDone(client, chatId);
