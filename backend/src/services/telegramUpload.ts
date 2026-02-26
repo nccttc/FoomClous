@@ -739,8 +739,9 @@ async function processFileUpload(client: TelegramClient, file: FileUploadItem, q
         // 静默模式：批量任务的每个文件完成后计数，并在全部完成时更新最终静默提示
         if (queue?.chatId) {
             const chatId = queue.chatId;
-            if (lastStatusMessageIsSilent.get(chatId.toString())) {
-                const sess = getSilentSession(chatId.toString());
+            const chatIdStr = chatId.toString();
+            if (lastStatusMessageIsSilent.get(chatIdStr) || silentSessionMap.has(chatIdStr)) {
+                const sess = getSilentSession(chatIdStr);
                 sess.completed += 1;
                 if (file.status === 'failed') {
                     sess.failed += 1;
@@ -958,10 +959,10 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
             if (silentActive || totalTasks >= 3) {
                 await runStatusAction(chatId, async () => {
                     await ensureSilentNotice(client, message, totalTasks);
-                });
 
-                const sess = silentActive ? getSilentSession(chatIdStr) : startSilentSession(chatIdStr, totalTasks);
-                sess.total = Math.max(sess.total, totalTasks);
+                    const sess = silentActive ? getSilentSession(chatIdStr) : startSilentSession(chatIdStr, totalTasks);
+                    sess.total = Math.max(sess.total, totalTasks);
+                });
             }
         }
     } else {
