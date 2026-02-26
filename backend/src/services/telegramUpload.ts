@@ -73,11 +73,27 @@ async function ensureSilentNotice(client: TelegramClient, message: Api.Message, 
     }
 
     if (now - lastTime > SILENT_NOTIFICATION_COOLDOWN || !silentMsgId) {
+        console.log(`[TG][silent] notice-attempt chat=${chatIdStr} fileCount=${fileCount} hasMsg=${!!silentMsgId}`);
         if (process.env.TG_STATUS_DEBUG === '1') {
             console.log(`[TG][silent] ensure chat=${chatIdStr} fileCount=${fileCount} silentMsg=${silentMsgId || 0} sess=${silentSessionActive}`);
         }
-        const sMsg = await safeReply(message, { message: buildSilentModeNotice(fileCount) });
-        if (sMsg) silentNoticeMessageIdMap.set(chatIdStr, sMsg.id);
+        const text = buildSilentModeNotice(fileCount);
+        const sMsg = await safeReply(message, { message: text });
+        if (sMsg) {
+            silentNoticeMessageIdMap.set(chatIdStr, sMsg.id);
+            console.log(`[TG][silent] notice-sent chat=${chatIdStr} msg=${sMsg.id}`);
+        } else {
+            try {
+                const directMsg = await client.sendMessage(chatId, { message: text });
+                const msgId = (directMsg as any)?.id;
+                if (msgId) {
+                    silentNoticeMessageIdMap.set(chatIdStr, msgId);
+                }
+                console.log(`[TG][silent] notice-sent-direct chat=${chatIdStr} msg=${msgId || 0}`);
+            } catch (e) {
+                console.error(`[TG][silent] notice-send-failed chat=${chatIdStr}:`, e);
+            }
+        }
         lastSilentNotificationTimeMap.set(chatIdStr, now);
         return;
     }
