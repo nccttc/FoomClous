@@ -58,36 +58,53 @@ async function safeEditMessage(client: TelegramClient, chatId: Api.TypeEntityLik
     }
 }
 
+const silentNoticePromiseMap = new Map<string, Promise<any>>();
+
 async function ensureSilentNotice(client: TelegramClient, chatId: Api.TypeEntityLike, fileCount: number, replyToMsg?: Api.Message) {
     const chatIdStr = chatId.toString();
+    const silentSessionActive = silentSessionMap.has(chatIdStr);
+    if (!silentSessionActive) return;
+
+    // 防止静默模式提示被重复发送的并发锁
+    if (silentNoticePromiseMap.has(chatIdStr)) {
+        try { await silentNoticePromiseMap.get(chatIdStr); } catch (e) { }
+    }
+
     const silentMsgId = silentNoticeMessageIdMap.get(chatIdStr);
     const now = Date.now();
     const lastTime = lastSilentNotificationTimeMap.get(chatIdStr) || 0;
 
-    const silentSessionActive = silentSessionMap.has(chatIdStr);
-    if (!silentSessionActive) return;
-
     if (now - lastTime > SILENT_NOTIFICATION_COOLDOWN || !silentMsgId) {
+        lastSilentNotificationTimeMap.set(chatIdStr, now); // 提前占位防止后续同时进入
         const text = buildSilentModeNotice(fileCount);
-        let sMsg: any;
 
-        if (replyToMsg) {
-            sMsg = await safeReply(replyToMsg, { message: text });
-        }
+        const sendPromise = (async () => {
+            let sMsg: any;
+            if (replyToMsg) {
+                sMsg = await safeReply(replyToMsg, { message: text });
+            }
+            if (!sMsg) {
+                try {
+                    sMsg = await client.sendMessage(chatId, { message: text });
+                } catch (e) {
+                    console.error(`[TG][silent] notice-send-failed chat=${chatIdStr}:`, e);
+                }
+            }
+            if (sMsg) {
+                silentNoticeMessageIdMap.set(chatIdStr, sMsg.id);
+                console.log(`[TG][silent] notice-sent chat=${chatIdStr} msg=${sMsg.id}`);
+            }
+            return sMsg;
+        })();
 
-        if (!sMsg) {
-            try {
-                sMsg = await client.sendMessage(chatId, { message: text });
-            } catch (e) {
-                console.error(`[TG][silent] notice-send-failed chat=${chatIdStr}:`, e);
+        silentNoticePromiseMap.set(chatIdStr, sendPromise);
+        try {
+            await sendPromise;
+        } finally {
+            if (silentNoticePromiseMap.get(chatIdStr) === sendPromise) {
+                silentNoticePromiseMap.delete(chatIdStr);
             }
         }
-
-        if (sMsg) {
-            silentNoticeMessageIdMap.set(chatIdStr, sMsg.id);
-            console.log(`[TG][silent] notice-sent chat=${chatIdStr} msg=${sMsg.id}`);
-        }
-        lastSilentNotificationTimeMap.set(chatIdStr, now);
         return;
     }
 
