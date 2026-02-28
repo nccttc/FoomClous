@@ -518,11 +518,10 @@ async function refreshConsolidatedMessage(client: TelegramClient, chatId: Api.Ty
         console.log(`[TG][consolidated] check chat=${chatIdStr} isSilent=${isSilent} replyTo=${!!replyTo}`);
     }
 
-    // 静默模式下不更新合并状态消息，避免覆盖静默通知
-    if (isSilent) {
-        if (process.env.TG_STATUS_DEBUG === '1') {
-            console.log(`[TG][consolidated] skip chat=${chatIdStr} reason=silent`);
-        }
+    // 静默模式 或 后台文件数超过3 → 不更新合并状态消息
+    const fileCount = getBackgroundFileCount(chatIdStr);
+    if (isSilent || fileCount > 3) {
+        console.log(`[TG][consolidated] skip chat=${chatIdStr} reason=${isSilent ? 'silent' : 'fileCount=' + fileCount}`);
         return;
     }
 
@@ -1129,8 +1128,8 @@ export async function handleFileUpload(client: TelegramClient, event: NewMessage
         // 检查是否需要进入静默模式
         await trySilentMode(client, chatId, message);
 
-        // 如果不在静默模式，显示状态消息
-        if (!silentSessionMap.has(chatIdStr)) {
+        // 如果不在静默模式且文件数未超过阈值，显示状态消息
+        if (!silentSessionMap.has(chatIdStr) && getBackgroundFileCount(chatIdStr) <= 3) {
             await runStatusAction(chatId, async () => {
                 if (useConsolidated()) {
                     // 多文件并行或混合模式：使用合并状态消息
