@@ -42,15 +42,21 @@ async function initializeDatabase() {
         i++;
       } else if (char === ";" && !inDollarQuote) {
         const stmt = current.trim();
-        if (stmt.length > 1 && !stmt.startsWith("--")) {
-          statements.push(stmt.slice(0, -1));
+        if (stmt.length > 1) {
+          const withoutLeadingLineComments = stmt.replace(/^\s*(--[^\n]*\n\s*)+/g, "").trim();
+          if (withoutLeadingLineComments.length > 0) {
+            statements.push(withoutLeadingLineComments.slice(0, -1));
+          }
         }
         current = "";
       }
     }
     const lastStmt = current.trim();
-    if (lastStmt.length > 0 && !lastStmt.startsWith("--")) {
-      statements.push(lastStmt);
+    if (lastStmt.length > 0) {
+      const withoutLeadingLineComments = lastStmt.replace(/^\s*(--[^\n]*\n\s*)+/g, "").trim();
+      if (withoutLeadingLineComments.length > 0) {
+        statements.push(withoutLeadingLineComments);
+      }
     }
     for (const statement of statements) {
       try {
@@ -1942,11 +1948,11 @@ function buildDeleteSuccess(fileName, fileId) {
     `\u{1F5D1}\uFE0F ID: ${fileId}`
   ].join("\n");
 }
-function buildSilentModeNotice(taskCount) {
+function buildSilentModeNotice(fileCount) {
   return [
     `\u{1F910} **\u5DF2\u5207\u6362\u5230\u9759\u9ED8\u6A21\u5F0F**`,
     ``,
-    `\u5F53\u524D\u4EFB\u52A1\u6570: ${taskCount} \u4E2A`,
+    `\u5F53\u524D\u4E0B\u8F7D\u6587\u4EF6\u6570: ${fileCount} \u4E2A`,
     `Bot \u5C06\u5728\u540E\u53F0\u7EE7\u7EED\u5904\u7406\u6240\u6709\u6587\u4EF6\uFF0C\u8BF7\u8010\u5FC3\u7B49\u5F85\u3002`,
     ``,
     `\u{1F4A1} \u53D1\u9001 /tasks \u67E5\u770B\u5B9E\u65F6\u4EFB\u52A1\u72B6\u6001`
@@ -2287,7 +2293,7 @@ async function safeEditMessage(client2, chatId, params) {
     return null;
   }
 }
-async function ensureSilentNotice(client2, message, taskCount) {
+async function ensureSilentNotice(client2, message, fileCount) {
   const chatId = message.chatId;
   if (!chatId) return;
   const chatIdStr = chatId.toString();
@@ -2297,7 +2303,7 @@ async function ensureSilentNotice(client2, message, taskCount) {
   if (now - lastTime > SILENT_NOTIFICATION_COOLDOWN || !lastMsgId) {
     await deleteLastStatusMessage(client2, chatId);
     const sMsg = await safeReply(message, {
-      message: buildSilentModeNotice(taskCount)
+      message: buildSilentModeNotice(fileCount)
     });
     if (sMsg) {
       updateLastStatusMessageId(chatId, sMsg.id, true);
@@ -2536,6 +2542,9 @@ async function checkAndResetSession(client2, chatId) {
 }
 async function refreshConsolidatedMessage(client2, chatId, replyTo) {
   const chatIdStr = chatId.toString();
+  if (lastStatusMessageIsSilent.get(chatIdStr)) {
+    return;
+  }
   const files = getConsolidatedFiles(chatIdStr);
   const batches = getConsolidatedBatches(chatIdStr);
   if (files.length === 0 && batches.length === 0) return;
@@ -2900,7 +2909,7 @@ async function handleFileUpload(client2, event) {
       const chatId = message.chatId;
       const stats = downloadQueue.getStats();
       const totalTasks = stats.active + stats.pending + 1;
-      if (totalTasks > 6) {
+      if (totalTasks >= 9) {
         await runStatusAction(chatId, async () => {
           await ensureSilentNotice(client2, message, totalTasks);
         });
@@ -2940,7 +2949,7 @@ async function handleFileUpload(client2, event) {
       const stats2 = downloadQueue.getStats();
       const lastMsgId = lastStatusMessageIdMap.get(chatIdStr);
       const totalTasks = stats2.active + stats2.pending + 1;
-      if (totalTasks > 6) {
+      if (totalTasks >= 9) {
         await ensureSilentNotice(client2, message, totalTasks);
         const sess = getSilentSession(chatIdStr);
         sess.total += 1;
@@ -3304,166 +3313,6 @@ var YTDLP_BIN = process.env.YTDLP_BIN || "yt-dlp";
 var YTDLP_WORK_DIR = process.env.YTDLP_WORK_DIR || "./data/uploads/ytdlp";
 var YTDLP_MAX_CONCURRENT = Math.max(1, parseInt(process.env.YTDLP_MAX_CONCURRENT || "1", 10) || 1);
 var ytDlpQueue = new YtDlpQueue(YTDLP_MAX_CONCURRENT);
-var pendingYtDlpSelections = /* @__PURE__ */ new Map();
-function buildYtdlpQualityButtons(taskId) {
-  return new Api2.ReplyInlineMarkup({
-    rows: [
-      new Api2.KeyboardButtonRow({
-        buttons: [
-          new Api2.KeyboardButtonCallback({ text: "\uD83C\uDFC6 \u6700\u9AD8\u6E05", data: Buffer.from(`ytdlp_hq_${taskId}`) }),
-          new Api2.KeyboardButtonCallback({ text: "\uD83D\uDCC0 \u6807\u6E05", data: Buffer.from(`ytdlp_sd_${taskId}`) }),
-          new Api2.KeyboardButtonCallback({ text: "\uD83D\uDCE6 \u4F4E\u753B\u8D28", data: Buffer.from(`ytdlp_low_${taskId}`) })
-        ]
-      })
-    ]
-  });
-}
-function getYtdlpFormatForTier(tier) {
-  const base = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best";
-  if (tier === "sd") {
-    return "bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[ext=mp4][height<=720]/best[height<=720]/bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[ext=mp4][height<=1080]/best[height<=1080]/bestvideo+bestaudio/best";
-  }
-  if (tier === "low") {
-    return "bestvideo[ext=mp4][height<=360]+bestaudio[ext=m4a]/bestvideo[height<=360]+bestaudio/best[ext=mp4][height<=360]/best[height<=360]/bestvideo[ext=mp4][height<=480]+bestaudio[ext=m4a]/bestvideo[height<=480]+bestaudio/best[ext=mp4][height<=480]/best[height<=480]/worstvideo+worstaudio/worst";
-  }
-  return base;
-}
-function getYtdlpTierLabel(tier) {
-  if (tier === "hq") return "\uD83C\uDFC6 \u6700\u9AD8\u6E05";
-  if (tier === "sd") return "\uD83D\uDCC0 \u6807\u6E05";
-  if (tier === "low") return "\uD83D\uDCE6 \u4F4E\u753B\u8D28";
-  return tier;
-}
-async function probeYtDlpInfo(url) {
-  const args = ["--no-playlist", "-J", url];
-  const info = await new Promise((resolve, reject) => {
-    const binLower = YTDLP_BIN.toLowerCase();
-    const isWindows = os2.platform() === "win32";
-    const needsShell = isWindows && (binLower.endsWith(".cmd") || binLower.endsWith(".bat"));
-    const child = spawn(YTDLP_BIN, args, {
-      windowsHide: true,
-      shell: needsShell
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (d) => {
-      stdout += d.toString();
-      if (stdout.length > 2e6) stdout = stdout.slice(-2e6);
-    });
-    child.stderr.on("data", (d) => {
-      stderr += d.toString();
-      if (stderr.length > 4e3) stderr = stderr.slice(-4e3);
-    });
-    child.on("error", (err) => reject(err));
-    child.on("close", (code) => {
-      if (code === 0) {
-        try {
-          resolve(JSON.parse(stdout));
-        } catch (e) {
-          reject(new Error(`yt-dlp -J parse failed: ${e instanceof Error ? e.message : String(e)}`));
-        }
-        return;
-      }
-      reject(new Error(stderr.trim() || `yt-dlp -J exited with code ${code}`));
-    });
-  });
-  return info;
-}
-function pickYtdlpVideoFormat(info, tier) {
-  const formats = Array.isArray(info?.formats) ? info.formats : [];
-  const videos = formats.filter((f) => {
-    const height = typeof f?.height === "number" ? f.height : Number(f?.height);
-    const width = typeof f?.width === "number" ? f.width : Number(f?.width);
-    const resolution = (f?.resolution || "").toString();
-    const tbr = typeof f?.tbr === "number" ? f.tbr : Number(f?.tbr);
-    const vbr = typeof f?.vbr === "number" ? f.vbr : Number(f?.vbr);
-    const vcodec = (f?.vcodec || "").toString();
-    const formatId = (f?.format_id || "").toString();
-    const parsedH = (() => {
-      if (Number.isFinite(height) && height > 0) return height;
-      if (resolution) {
-        const m = resolution.match(/^(\d+)x(\d+)$/);
-        if (m) {
-          const h2 = Number(m[2]);
-          if (Number.isFinite(h2) && h2 > 0) return h2;
-        }
-      }
-      if (Number.isFinite(width) && width > 0 && resolution) {
-        const m = resolution.match(/^(\d+)x(\d+)$/);
-        if (m) {
-          const h2 = Number(m[2]);
-          if (Number.isFinite(h2) && h2 > 0) return h2;
-        }
-      }
-      return 0;
-    })();
-    const hasQuality = parsedH > 0 || Number.isFinite(tbr) && tbr > 0 || Number.isFinite(vbr) && vbr > 0;
-    return hasQuality && vcodec && vcodec !== "none" && formatId;
-  }).map((f) => ({
-    formatId: (f.format_id || "").toString(),
-    height: typeof f.height === "number" ? f.height : Number(f.height),
-    width: typeof f.width === "number" ? f.width : Number(f.width),
-    resolution: (f.resolution || "").toString(),
-    tbr: typeof f.tbr === "number" ? f.tbr : Number(f.tbr),
-    vbr: typeof f.vbr === "number" ? f.vbr : Number(f.vbr)
-  })).map((v) => {
-    let height = Number.isFinite(v.height) && v.height > 0 ? v.height : 0;
-    if (!height && v.resolution) {
-      const m = v.resolution.match(/^(\d+)x(\d+)$/);
-      if (m) {
-        const h2 = Number(m[2]);
-        if (Number.isFinite(h2) && h2 > 0) height = h2;
-      }
-    }
-    const br = Math.max(Number.isFinite(v.vbr) ? v.vbr : 0, Number.isFinite(v.tbr) ? v.tbr : 0);
-    return { ...v, height, br };
-  }).sort((a, b) => a.height - b.height || a.br - b.br);
-  if (videos.length === 0) return null;
-  const heights = videos.map((v) => v.height).filter((h) => Number.isFinite(h) && h > 0);
-  const minHeight = heights.length ? Math.min(...heights) : 0;
-  const maxHeight = heights.length ? Math.max(...heights) : 0;
-  const heightsList = Array.from(new Set(heights)).sort((a, b) => a - b);
-  const brs = videos.map((v) => v.br).filter((b) => Number.isFinite(b) && b > 0);
-  const minBr = brs.length ? Math.min(...brs) : 0;
-  const maxBr = brs.length ? Math.max(...brs) : 0;
-  const sameHeightOnly = minHeight > 0 && maxHeight > 0 && minHeight === maxHeight;
-  const pickByBitrate = sameHeightOnly || minHeight === 0 && maxHeight === 0;
-  if (tier === "hq") {
-    const v = pickByBitrate ? [...videos].sort((a, b) => a.br - b.br)[videos.length - 1] : videos[videos.length - 1];
-    return { ...v, minHeight, maxHeight, heightsList, minBr, maxBr };
-  }
-  if (tier === "sd") {
-    let v;
-    if (pickByBitrate) {
-      const sorted = [...videos].sort((a, b) => a.br - b.br);
-      v = sorted[Math.floor((sorted.length - 1) / 2)] || sorted[0];
-    } else {
-      const target = 720;
-      v = [...videos].reverse().find((x) => x.height > 0 && x.height <= target);
-      if (!v) {
-        const target2 = 1080;
-        v = [...videos].reverse().find((x) => x.height > 0 && x.height <= target2) || videos[videos.length - 1];
-      }
-    }
-    return { ...v, minHeight, maxHeight, heightsList, minBr, maxBr };
-  }
-  if (tier === "low") {
-    let v;
-    if (pickByBitrate) {
-      v = [...videos].sort((a, b) => a.br - b.br)[0];
-    } else {
-      const target = 360;
-      v = [...videos].reverse().find((x) => x.height > 0 && x.height <= target);
-      if (!v) {
-        const target2 = 480;
-        v = [...videos].reverse().find((x) => x.height > 0 && x.height <= target2) || videos[0];
-      }
-    }
-    return { ...v, minHeight, maxHeight, heightsList, minBr, maxBr };
-  }
-  const v = videos[videos.length - 1];
-  return { ...v, minHeight, maxHeight, heightsList, minBr, maxBr };
-}
 function ensureDir(p) {
   if (!fs7.existsSync(p)) {
     fs7.mkdirSync(p, { recursive: true });
@@ -3489,14 +3338,12 @@ function selectPrimaryOutputFile(taskDir) {
   if (files.length === 0) return null;
   return { filePath: files[0].fullPath, fileName: files[0].name, size: files[0].size };
 }
-async function runYtDlpDownload(url, taskDir, format) {
+async function runYtDlpDownload(url, taskDir) {
   ensureDir(taskDir);
   const outputTemplate = path7.join(taskDir, "%(title).200s-%(id)s.%(ext)s");
   const args = [
     "--no-playlist",
     "--newline",
-    "-f",
-    format || "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
     "--merge-output-format",
     "mp4",
     "-o",
@@ -3528,27 +3375,6 @@ async function runYtDlpDownload(url, taskDir, format) {
       reject(new Error(msg));
     });
   });
-}
-async function runYtDlpDownloadWithFallback(url, taskDir, preferredFormat) {
-  const attempts = [
-    preferredFormat,
-    "bestvideo+bestaudio/best",
-    "best"
-  ].filter(Boolean);
-  let lastErr = null;
-  for (let i = 0; i < attempts.length; i++) {
-    const fmt = attempts[i];
-    try {
-      if (i > 0) {
-        safeRmDir(taskDir);
-      }
-      await runYtDlpDownload(url, taskDir, fmt);
-      return;
-    } catch (e) {
-      lastErr = e;
-    }
-  }
-  throw lastErr || new Error("yt-dlp download failed");
 }
 async function uploadDownloadedFile(localFilePath, originalFileName) {
   const provider = storageManager.getProvider();
@@ -3592,44 +3418,45 @@ async function handleYtDlpCommand(message, url) {
   const workBaseDir = path7.isAbsolute(YTDLP_WORK_DIR) ? YTDLP_WORK_DIR : path7.join(process.cwd(), YTDLP_WORK_DIR);
   ensureDir(workBaseDir);
   const taskDir = path7.join(workBaseDir, task.id);
-  const chatId = message.chatId;
-  const displayUrl = url.length > 160 ? url.slice(0, 160) + "..." : url;
-  const statusMsg = await message.reply({
-    message: `\uD83C\uDFAC YT-DLP \u4EFB\u52A1\n\n\uD83D\uDD17 \u94FE\u63A5\n${displayUrl}\n\n\u{1F3AF} \u8BF7\u9009\u62E9\u6E05\u6670\u5EA6\n\uD83C\uDD94 Task: ${task.id}`,
-    buttons: buildYtdlpQualityButtons(task.id)
-  });
-  const statusMsgId = statusMsg?.id;
-  const updateStatus = async (text) => {
-    if (!client || !chatId || !statusMsgId) return;
-    await safeEditMessage(client, chatId, { message: statusMsgId, text });
-  };
-  if (chatId && statusMsgId) {
-    pendingYtDlpSelections.set(task.id, {
-      url: task.url,
-      chatId,
-      messageId: statusMsgId,
-      senderId: message.senderId?.toJSNumber(),
-      taskDir,
-      displayUrl,
-      createdAt: Date.now()
-    });
-    setTimeout(async () => {
-      const pending = pendingYtDlpSelections.get(task.id);
-      if (!pending) return;
-      pendingYtDlpSelections.delete(task.id);
+  await message.reply({ message: `\u23EC \u5F00\u59CB\u89E3\u6790\u5E76\u4E0B\u8F7D...
+Task: ${task.id}` });
+  ytDlpQueue.add(async () => {
+    task.status = "active";
+    task.startedAt = Date.now();
+    try {
+      await runYtDlpDownload(task.url, taskDir);
+      const primary = selectPrimaryOutputFile(taskDir);
+      if (!primary) {
+        throw new Error("\u4E0B\u8F7D\u5B8C\u6210\u4F46\u672A\u627E\u5230\u8F93\u51FA\u6587\u4EF6");
+      }
+      const uploadResult = await uploadDownloadedFile(primary.filePath, primary.fileName);
+      task.status = "success";
+      task.finishedAt = Date.now();
+      const text = `\u2705 \u5DF2\u4E0A\u4F20
+
+\u6587\u4EF6: ${primary.fileName}
+\u5927\u5C0F: ${formatBytes(uploadResult.size)}
+\u5B58\u50A8\u6E90: ${uploadResult.providerName}`;
       try {
-        if (client) {
-          await safeEditMessage(client, pending.chatId, {
-            message: pending.messageId,
-            text: `\u23F1 \u8D85\u65F6\u672A\u9009\u62E9\u6E05\u6670\u5EA6\n\n\uD83D\uDD17 \u94FE\u63A5\n${pending.displayUrl}\n\n\uD83D\uDCA1 \u8BF7\u91CD\u65B0\u53D1\u9001 /ytdlp <url>`,
-            buttons: null
-          });
-        }
+        await message.reply({ message: text });
       } catch {
       }
-      safeRmDir(pending.taskDir);
-    }, 5 * 60 * 1000);
-  }
+    } catch (e) {
+      task.status = "failed";
+      task.finishedAt = Date.now();
+      task.error = e instanceof Error ? e.message : String(e);
+      const errText = (task.error || "\u672A\u77E5\u9519\u8BEF").toString().trim();
+      const trimmed = errText.length > 1500 ? errText.slice(0, 1500) + "..." : errText;
+      try {
+        await message.reply({ message: `\u274C \u4E0B\u8F7D/\u4E0A\u4F20\u5931\u8D25
+
+\u539F\u56E0: ${trimmed}` });
+      } catch {
+      }
+    } finally {
+      safeRmDir(taskDir);
+    }
+  });
 }
 
 // src/services/telegramBot.ts
@@ -4036,73 +3863,6 @@ async function initTelegramBot() {
         }
         if (data.startsWith("cleanup_")) {
           await handleCleanupButtonCallback(callbackUpdate, data);
-          return;
-        }
-        if (data.startsWith("ytdlp_")) {
-          try {
-            const m = data.match(/^ytdlp_(hq|sd|low)_([0-9a-fA-F-]{8,})$/);
-            if (!m) {
-              await client.invoke(new Api2.messages.SetBotCallbackAnswer({
-                queryId: callbackUpdate.queryId,
-                message: "\u274C \u6309\u94AE\u65E0\u6548"
-              }));
-              return;
-            }
-            const tier = m[1];
-            const taskId = m[2];
-            const pending = pendingYtDlpSelections.get(taskId);
-            if (!pending) {
-              await client.invoke(new Api2.messages.SetBotCallbackAnswer({
-                queryId: callbackUpdate.queryId,
-                message: "\u23F1 \u4EFB\u52A1\u5DF2\u8D85\u65F6\u6216\u5DF2\u5904\u7406"
-              }));
-              return;
-            }
-            pendingYtDlpSelections.delete(taskId);
-            const tierLabel = getYtdlpTierLabel(tier);
-            const format = getYtdlpFormatForTier(tier);
-            await client.invoke(new Api2.messages.SetBotCallbackAnswer({
-              queryId: callbackUpdate.queryId,
-              message: `\u2705 \u5DF2\u9009\u62E9: ${tierLabel}`
-            }));
-            const updateText = async (text) => {
-              await safeEditMessage(client, pending.chatId, {
-                message: pending.messageId,
-                text,
-                buttons: null
-              });
-            };
-            await updateText(`\uD83C\uDFAC YT-DLP \u4EFB\u52A1\n\n\uD83D\uDD17 \u94FE\u63A5\n${pending.displayUrl}\n\n\u{1F3AF} \u6E05\u6670\u5EA6: ${tierLabel}\n\n\u2B07\uFE0F \u72B6\u6001: \u6B63\u5728\u4E0B\u8F7D...\n\uD83C\uDD94 Task: ${taskId}`);
-            ytDlpQueue.add(async () => {
-              try {
-                await runYtDlpDownloadWithFallback(pending.url, pending.taskDir, format);
-                const primary = selectPrimaryOutputFile(pending.taskDir);
-                if (!primary) {
-                  throw new Error("\u4E0B\u8F7D\u5B8C\u6210\u4F46\u672A\u627E\u5230\u8F93\u51FA\u6587\u4EF6");
-                }
-                await updateText(`\uD83C\uDFAC YT-DLP \u4EFB\u52A1\n\n\uD83D\uDD17 \u94FE\u63A5\n${pending.displayUrl}\n\n\u{1F3AF} \u6E05\u6670\u5EA6: ${tierLabel}\n\n\u2601\uFE0F \u72B6\u6001: \u6B63\u5728\u4E0A\u4F20\u5230\u5B58\u50A8\u6E90...\n\uD83D\uDCC4 \u6587\u4EF6: ${primary.fileName}\n\uD83C\uDD94 Task: ${taskId}`);
-                const uploadResult = await uploadDownloadedFile(primary.filePath, primary.fileName);
-                await updateText(`\u2705 \u4EFB\u52A1\u5B8C\u6210\n\n\uD83D\uDCC4 \u6587\u4EF6\n${primary.fileName}\n\n\uD83D\uDCE6 \u5927\u5C0F: ${formatBytes(uploadResult.size)}\n\uD83D\uDCBE \u5B58\u50A8\u6E90: ${uploadResult.providerName}\n\uD83C\uDD94 Task: ${taskId}`);
-              } catch (e) {
-                const errText = (e instanceof Error ? e.message : String(e) || "\u672A\u77E5\u9519\u8BEF").toString().trim();
-                const trimmed = errText.length > 1500 ? errText.slice(0, 1500) + "..." : errText;
-                try {
-                  await updateText(`\u274C \u4EFB\u52A1\u5931\u8D25\n\n\uD83D\uDD17 \u94FE\u63A5\n${pending.displayUrl}\n\n\uD83E\uDDE8 \u539F\u56E0\n${trimmed}\n\n\uD83C\uDD94 Task: ${taskId}`);
-                } catch {
-                }
-              } finally {
-                safeRmDir(pending.taskDir);
-              }
-            });
-          } catch (e) {
-            try {
-              await client.invoke(new Api2.messages.SetBotCallbackAnswer({
-                queryId: callbackUpdate.queryId,
-                message: "\u274C \u5904\u7406\u5931\u8D25"
-              }));
-            } catch {
-            }
-          }
           return;
         }
       }

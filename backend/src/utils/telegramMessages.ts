@@ -406,11 +406,11 @@ export function buildDeleteSuccess(fileName: string, fileId: string): string {
 // ─── 多文件上传 ──────────────────────────────────────────────
 
 /** 静默模式通知 */
-export function buildSilentModeNotice(taskCount: number): string {
+export function buildSilentModeNotice(fileCount: number): string {
     return [
         `🤐 **已切换到静默模式**`,
         ``,
-        `当前任务数: ${taskCount} 个`,
+        `当前下载文件数: ${fileCount} 个`,
         `Bot 将在后台继续处理所有文件，请耐心等待。`,
         ``,
         `💡 发送 /tasks 查看实时任务状态`,
@@ -486,7 +486,7 @@ export async function buildConsolidatedStatus(
         const failedSingles = singleFiles.filter(f => f.phase === 'failed').length;
         const successfulBatches = batches.reduce((sum, b) => sum + (b.successful || 0), 0);
         const failedBatches = batches.reduce((sum, b) => sum + (b.failed || 0), 0);
-        
+
         const totalSuccessful = successfulSingles + successfulBatches;
         const totalFailed = failedSingles + failedBatches;
         const totalSize = [...singleFiles.filter(f => f.phase === 'success'), ...batches.flatMap(b => [])]
@@ -507,7 +507,7 @@ export async function buildConsolidatedStatus(
         const failedSingles = singleFiles.filter(f => f.phase === 'failed').length;
         const successfulBatches = batches.reduce((sum, b) => sum + (b.successful || 0), 0);
         const failedBatches = batches.reduce((sum, b) => sum + (b.failed || 0), 0);
-        
+
         const totalSuccessful = successfulSingles + successfulBatches;
         const totalFailed = failedSingles + failedBatches;
         const totalSize = [...singleFiles.filter(f => f.phase === 'success'), ...batches.flatMap(b => [])]
@@ -538,7 +538,7 @@ export async function buildConsolidatedStatus(
         if (totalSize > 0) {
             lines.push(`📦 总大小: ${formatBytes(totalSize)}`);
         }
-        
+
         // 显示存储提供商
         const providers = new Set<string>();
         singleFiles.filter(f => f.phase === 'success' && f.providerName).forEach(f => providers.add(f.providerName!));
@@ -546,15 +546,15 @@ export async function buildConsolidatedStatus(
         if (providers.size > 0) {
             lines.push(`📍 存储: ${Array.from(providers).map(p => getProviderDisplayName(p)).join(', ')}`);
         }
-        
+
         lines.push('');
         lines.push(`⏰ 完成时间: ${new Date().toLocaleString('zh-CN', {
             month: '2-digit',
-            day: '2-digit', 
+            day: '2-digit',
             hour: '2-digit',
             minute: '2-digit'
         })}`);
-        
+
         // 添加清理通知（如果有失败文件）
         if (totalFailed > 0) {
             lines.push('');
@@ -567,9 +567,9 @@ export async function buildConsolidatedStatus(
                 lines.push('  ✅ 没有发现需要清理的垃圾文件');
             }
         }
-        
+
         lines.push('');
-        
+
         // 添加友好的结束消息
         if (totalFailed === 0) {
             lines.push('🎊 所有文件已安全上传到云端！');
