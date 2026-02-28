@@ -58,47 +58,40 @@ async function safeEditMessage(client: TelegramClient, chatId: Api.TypeEntityLik
     }
 }
 
-async function ensureSilentNotice(client: TelegramClient, message: Api.Message, fileCount: number) {
-    const chatId = message.chatId;
-    if (!chatId) return;
+async function ensureSilentNotice(client: TelegramClient, chatId: Api.TypeEntityLike, fileCount: number, replyToMsg?: Api.Message) {
     const chatIdStr = chatId.toString();
     const silentMsgId = silentNoticeMessageIdMap.get(chatIdStr);
     const now = Date.now();
     const lastTime = lastSilentNotificationTimeMap.get(chatIdStr) || 0;
 
     const silentSessionActive = silentSessionMap.has(chatIdStr);
-
-    if (!silentSessionActive) {
-        return;
-    }
+    if (!silentSessionActive) return;
 
     if (now - lastTime > SILENT_NOTIFICATION_COOLDOWN || !silentMsgId) {
-        console.log(`[TG][silent] notice-attempt chat=${chatIdStr} fileCount=${fileCount} hasMsg=${!!silentMsgId}`);
-        if (process.env.TG_STATUS_DEBUG === '1') {
-            console.log(`[TG][silent] ensure chat=${chatIdStr} fileCount=${fileCount} silentMsg=${silentMsgId || 0} sess=${silentSessionActive}`);
-        }
         const text = buildSilentModeNotice(fileCount);
-        const sMsg = await safeReply(message, { message: text });
-        if (sMsg) {
-            silentNoticeMessageIdMap.set(chatIdStr, sMsg.id);
-            console.log(`[TG][silent] notice-sent chat=${chatIdStr} msg=${sMsg.id}`);
-        } else {
+        let sMsg: any;
+
+        if (replyToMsg) {
+            sMsg = await safeReply(replyToMsg, { message: text });
+        }
+
+        if (!sMsg) {
             try {
-                const directMsg = await client.sendMessage(chatId, { message: text });
-                const msgId = (directMsg as any)?.id;
-                if (msgId) {
-                    silentNoticeMessageIdMap.set(chatIdStr, msgId);
-                }
-                console.log(`[TG][silent] notice-sent-direct chat=${chatIdStr} msg=${msgId || 0}`);
+                sMsg = await client.sendMessage(chatId, { message: text });
             } catch (e) {
                 console.error(`[TG][silent] notice-send-failed chat=${chatIdStr}:`, e);
             }
+        }
+
+        if (sMsg) {
+            silentNoticeMessageIdMap.set(chatIdStr, sMsg.id);
+            console.log(`[TG][silent] notice-sent chat=${chatIdStr} msg=${sMsg.id}`);
         }
         lastSilentNotificationTimeMap.set(chatIdStr, now);
         return;
     }
 
-    // Cooldown 内：尽量编辑现有静默提示（如果存在），保证提示持续可见
+    // Cooldown 内：编辑现有提示
     if (silentMsgId) {
         await safeEditMessage(client, chatId, {
             message: silentMsgId,
@@ -333,14 +326,14 @@ function getBackgroundFileCount(chatIdStr: string): number {
  * 集中化静默模式触发逻辑
  * 后台文件数量超过 3 个时进入静默模式
  */
-async function trySilentMode(client: TelegramClient, chatId: Api.TypeEntityLike, message: Api.Message) {
+async function trySilentMode(client: TelegramClient, chatId: Api.TypeEntityLike, message?: Api.Message) {
     const chatIdStr = chatId.toString();
     const fileCount = getBackgroundFileCount(chatIdStr);
     const isSilent = silentSessionMap.has(chatIdStr);
 
     console.log(`[TG][silent] tryCheck chat=${chatIdStr} fileCount=${fileCount} isSilent=${isSilent}`);
 
-    if (fileCount > 3) {
+    if (fileCount > 3 || isSilent) {
         if (!isSilent) {
             // 首次进入静默模式
             await deleteLastStatusMessage(client, chatId);
@@ -351,8 +344,10 @@ async function trySilentMode(client: TelegramClient, chatId: Api.TypeEntityLike,
             const sess = getSilentSession(chatIdStr);
             sess.total = Math.max(sess.total, fileCount);
         }
-        await ensureSilentNotice(client, message, fileCount);
+        await ensureSilentNotice(client, chatId, fileCount, message);
+        return true; // 表示已进入/处于静默模式
     }
+    return false;
 }
 
 /**
@@ -519,16 +514,12 @@ async function checkAndResetSession(client: TelegramClient, chatId: Api.TypeEnti
 /** 更新合并状态消息 */
 async function refreshConsolidatedMessage(client: TelegramClient, chatId: Api.TypeEntityLike, replyTo?: Api.Message) {
     const chatIdStr = chatId.toString();
-    const isSilent = silentSessionMap.has(chatIdStr);
 
-    if (process.env.TG_STATUS_DEBUG === '1') {
-        console.log(`[TG][consolidated] check chat=${chatIdStr} isSilent=${isSilent} replyTo=${!!replyTo}`);
-    }
-
-    // 静默模式 或 后台文件数超过3 → 不更新合并状态消息
+    // 集中判断：如果文件数超过 3 或已在静默模式，直接触发 trySilentMode 并返回
+    const alreadySilent = silentSessionMap.has(chatIdStr);
     const fileCount = getBackgroundFileCount(chatIdStr);
-    if (isSilent || fileCount > 3) {
-        console.log(`[TG][consolidated] skip chat=${chatIdStr} reason=${isSilent ? 'silent' : 'fileCount=' + fileCount}`);
+    if (alreadySilent || fileCount > 3) {
+        await trySilentMode(client, chatId, replyTo);
         return;
     }
 
@@ -541,7 +532,6 @@ async function refreshConsolidatedMessage(client: TelegramClient, chatId: Api.Ty
     const existingMsgId = lastStatusMessageIdMap.get(chatIdStr);
 
     // 新任务触发（有 replyTo）：强制删除旧追踪器，并发送一条新的追踪器消息
-    // 进度更新触发（无 replyTo）：尽量编辑现有追踪器，避免刷屏
     if (replyTo) {
         await deleteLastStatusMessage(client, chatId);
         const msg = await safeReply(replyTo, { message: text }) as Api.Message;
@@ -551,8 +541,8 @@ async function refreshConsolidatedMessage(client: TelegramClient, chatId: Api.Ty
         return;
     }
 
-    // 无 replyTo 时，仅在已有状态消息且非静默模式时编辑
-    if (existingMsgId && !isSilent) {
+    // 进度更新触发（无 replyTo）：编辑现有追踪器
+    if (existingMsgId) {
         await safeEditMessage(client, chatId, { message: existingMsgId, text });
     }
 }
