@@ -440,9 +440,16 @@ function getOutstandingTaskCount(chatIdStr: string): number {
     const files = getConsolidatedFiles(chatIdStr);
     const batches = getConsolidatedBatches(chatIdStr);
 
+    // 计算未完成的单文件
     const outstandingFiles = files.filter(f => f.phase !== 'success' && f.phase !== 'failed').length;
-    const outstandingBatchFiles = batches.reduce((acc, b) => acc + Math.max(0, b.totalFiles - b.completed), 0);
-    return outstandingFiles + outstandingBatchFiles;
+    // 计算未完成的批量任务 (每个 batch 算 1 个任务)
+    const outstandingBatches = batches.filter(b => b.completed < b.totalFiles).length;
+
+    const count = outstandingFiles + outstandingBatches;
+    if (process.env.TG_STATUS_DEBUG === '1') {
+        console.log(`[TG][tasks] count=${count} (files=${outstandingFiles}, batches=${outstandingBatches})`);
+    }
+    return count;
 }
 
 
@@ -468,9 +475,14 @@ async function checkAndResetSession(client: TelegramClient, chatId: Api.TypeEnti
 /** 更新合并状态消息 */
 async function refreshConsolidatedMessage(client: TelegramClient, chatId: Api.TypeEntityLike, replyTo?: Api.Message) {
     const chatIdStr = chatId.toString();
+    const isSilent = silentSessionMap.has(chatIdStr);
+
+    if (process.env.TG_STATUS_DEBUG === '1') {
+        console.log(`[TG][consolidated] check chat=${chatIdStr} isSilent=${isSilent} replyTo=${!!replyTo}`);
+    }
 
     // 静默模式下不更新合并状态消息，避免覆盖静默通知
-    if (silentSessionMap.has(chatIdStr)) {
+    if (isSilent) {
         if (process.env.TG_STATUS_DEBUG === '1') {
             console.log(`[TG][consolidated] skip chat=${chatIdStr} reason=silent`);
         }
@@ -484,7 +496,6 @@ async function refreshConsolidatedMessage(client: TelegramClient, chatId: Api.Ty
 
     const text = await buildConsolidatedStatus(files, batches);
     const existingMsgId = lastStatusMessageIdMap.get(chatIdStr);
-    const isSilent = silentSessionMap.has(chatIdStr);
 
     // 新任务触发（有 replyTo）：强制删除旧追踪器，并发送一条新的追踪器消息
     // 进度更新触发（无 replyTo）：尽量编辑现有追踪器，避免刷屏
