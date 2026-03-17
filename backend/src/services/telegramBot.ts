@@ -340,6 +340,13 @@ export async function initTelegramBot(): Promise<void> {
                 const senderId = message.senderId?.toJSNumber();
                 if (!senderId) return;
 
+                // 忽略过旧的消息，防止 Bot 重启时重复处理 pending updates
+                const messageAge = Date.now() / 1000 - message.date;
+                if (messageAge > 300) { // 超过 5 分钟的消息直接跳过
+                    console.log(`🤖 跳过过旧消息 (${Math.round(messageAge)}s ago, id=${message.id})`);
+                    return;
+                }
+
                 const text = message.text || '';
                 const chatId = message.chatId;
 
